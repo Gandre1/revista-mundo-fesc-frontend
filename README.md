@@ -262,7 +262,7 @@ pnpm --version   # Debe mostrar v8.x.x o superior (si usas pnpm)
 
 #### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/tu-org/revista-mundo-fesc.git
+git clone [https://github.com/Gandre1/revista-mundo-fesc-frontend]
 cd revista-mundo-fesc
 ```
 
