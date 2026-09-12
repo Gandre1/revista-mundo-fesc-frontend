@@ -1,0 +1,82 @@
+---
+title: Navegación por Roles - Revista Mundo FESC
+---
+graph TB
+    Start([Usuario accede al sistema])
+    Login[/Login Page/]
+    
+    Start --> Login
+    
+    Login -->|admin@fesc.edu.co| AdminDash
+    Login -->|usuario@fesc.edu.co| AutorDash
+    Login -->|revisor@fesc.edu.co| RevisorDash
+    
+    subgraph AdminFlow["Flujo ADMINISTRADOR"]
+        AdminDash[Dashboard Admin<br/>Estadísticas globales]
+        AdminSub[Gestión de Envíos<br/>TODOS los artículos]
+        AdminDetail[Detalle de Envío<br/>Cambiar estado/Asignar]
+        AdminMsg[Mensajería<br/>TODOS los mensajes]
+        AdminProf[Mi Perfil]
+        AdminNew[Nuevo Envío]
+        
+        AdminDash --> AdminSub
+        AdminDash --> AdminMsg
+        AdminDash --> AdminNew
+        AdminSub --> AdminDetail
+        AdminDetail --> AdminSub
+        AdminDash --> AdminProf
+    end
+    
+    subgraph AutorFlow["Flujo AUTOR"]
+        AutorDash[Dashboard Autor<br/>Mis envíos]
+        AutorNew[Nuevo Artículo<br/>Wizard 4 pasos]
+        AutorDetail[Detalle Mi Artículo<br/>Ver estado/comentarios]
+        AutorMsg[Mensajería<br/>Mis mensajes]
+        AutorProf[Mi Perfil]
+        
+        AutorDash --> AutorNew
+        AutorDash --> AutorDetail
+        AutorDash --> AutorMsg
+        AutorDash --> AutorProf
+        AutorNew --> AutorDash
+        AutorDetail --> AutorDash
+    end
+    
+    subgraph RevisorFlow["Flujo REVISOR"]
+        RevisorDash[Dashboard Revisor<br/>Asignados a mí]
+        RevisorDetail[Revisar Artículo<br/>Agregar comentarios]
+        RevisorMsg[Mensajería<br/>Mensajes de asignaciones]
+        RevisorProf[Mi Perfil]
+        
+        RevisorDash --> RevisorDetail
+        RevisorDash --> RevisorMsg
+        RevisorDash --> RevisorProf
+        RevisorDetail --> RevisorDash
+    end
+    
+    AdminDash -->|Cerrar Sesión| Logout
+    AutorDash -->|Cerrar Sesión| Logout
+    RevisorDash -->|Cerrar Sesión| Logout
+    
+    Logout([Logout]) --> Login
+    
+    style AdminDash fill:#E8F5E9,stroke:#2E7D32
+    style AdminSub fill:#E8F5E9,stroke:#2E7D32
+    style AdminDetail fill:#E8F5E9,stroke:#2E7D32
+    style AdminMsg fill:#E8F5E9,stroke:#2E7D32
+    style AdminProf fill:#E8F5E9,stroke:#2E7D32
+    style AdminNew fill:#E8F5E9,stroke:#2E7D32
+    
+    style AutorDash fill:#FFF9C4,stroke:#F57F17
+    style AutorNew fill:#FFF9C4,stroke:#F57F17
+    style AutorDetail fill:#FFF9C4,stroke:#F57F17
+    style AutorMsg fill:#FFF9C4,stroke:#F57F17
+    style AutorProf fill:#FFF9C4,stroke:#F57F17
+    
+    style RevisorDash fill:#FFE0B2,stroke:#E65100
+    style RevisorDetail fill:#FFE0B2,stroke:#E65100
+    style RevisorMsg fill:#FFE0B2,stroke:#E65100
+    style RevisorProf fill:#FFE0B2,stroke:#E65100
+    
+    style Login fill:#BBDEFB,stroke:#1976D2
+    style Logout fill:#FFCDD2,stroke:#C62828

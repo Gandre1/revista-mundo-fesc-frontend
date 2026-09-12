@@ -1,0 +1,191 @@
+@startuml Componentes React
+
+title Arquitectura de Componentes React\nRevista Mundo FESC
+
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #E30513
+  FontSize 11
+}
+
+skinparam package {
+  BackgroundColor #F8F8F8
+  BorderColor #9C0F06
+  FontStyle bold
+}
+
+package "App Layer" {
+  component [App.tsx] as App
+  component [RouterProvider] as Router
+}
+
+package "Routing" {
+  component [routes.tsx\n18 rutas] as Routes
+}
+
+package "Layouts (HOC)" {
+  component [AdminLayout\n+ Sidebar\n+ Topbar\n+ Notifications] as AdminL #E8F5E9
+  component [AutorLayout\n+ Sidebar\n+ Topbar\n+ Notifications] as AutorL #FFF9C4
+  component [RevisorLayout\n+ Sidebar\n+ Topbar\n+ Notifications] as RevisorL #FFE0B2
+}
+
+package "Public Pages" {
+  component [Login\nFormulario autenticación] as Login
+  component [Register\nFormulario registro] as Register
+}
+
+package "Admin Pages" {
+  component [Dashboard\nEstadísticas globales] as DashAdmin
+  component [SubmissionsManagement\nTabla todos los envíos] as SubmMgmt
+  component [SubmissionDetailNew\nDetalle completo] as DetailAdmin
+  component [Mensajeria\nChat sistema] as MsgAdmin
+  component [Profile\nEdición perfil] as ProfAdmin
+}
+
+package "Autor Pages" {
+  component [DashboardAutor\nMis envíos] as DashAutor
+  component [SubmissionWizardNew\n4 pasos] as Wizard
+  component [SubmissionDetailNew\nDetalle mi artículo] as DetailAutor
+  component [Mensajeria\nMis mensajes] as MsgAutor
+  component [Profile\nMi perfil] as ProfAutor
+}
+
+package "Revisor Pages" {
+  component [DashboardRevisor\nAsignados a mí] as DashRev
+  component [SubmissionDetailNew\nRevisar artículo] as DetailRev
+  component [Mensajeria\nMensajes asignaciones] as MsgRev
+  component [Profile\nMi perfil] as ProfRev
+}
+
+package "Shared Components" {
+  component [NotificationCenterNew\nCentro notificaciones] as NotifCenter
+  component [LanguageSelector\nSelector ES/EN] as LangSel
+  component [Toast\nNotificaciones toast] as Toast
+  component [ImageWithFallback\nImágenes optimizadas] as Img
+}
+
+package "UI Components" {
+  component [Button] as Btn
+  component [Input] as Input
+  component [Select] as Select
+  component [Textarea] as Textarea
+  component [Modal] as Modal
+  component [Badge] as Badge
+  component [Card] as Card
+}
+
+package "Context (State Management)" {
+  component [AuthContext\n• user\n• login()\n• logout()\n• register()] as AuthCtx
+  component [SubmissionContext\n• submissions\n• comments\n• reviews] as SubCtx
+}
+
+package "Services" {
+  component [StorageService\n• getSubmissions()\n• addSubmission()\n• getMessages()\n• etc.] as Storage
+  component [i18nService\n• t(key)\n• setLanguage()\n• getCurrentLanguage()] as I18n
+}
+
+' Conexiones principales
+App --> Router
+Router --> Routes
+
+Routes --> AdminL
+Routes --> AutorL
+Routes --> RevisorL
+Routes --> Login
+Routes --> Register
+
+' Admin flow
+AdminL --> DashAdmin
+AdminL --> SubmMgmt
+AdminL --> DetailAdmin
+AdminL --> MsgAdmin
+AdminL --> ProfAdmin
+
+' Autor flow
+AutorL --> DashAutor
+AutorL --> Wizard
+AutorL --> DetailAutor
+AutorL --> MsgAutor
+AutorL --> ProfAutor
+
+' Revisor flow
+RevisorL --> DashRev
+RevisorL --> DetailRev
+RevisorL --> MsgRev
+RevisorL --> ProfRev
+
+' Layouts usan shared components
+AdminL ..> NotifCenter : usa
+AdminL ..> LangSel : usa
+AutorL ..> NotifCenter : usa
+AutorL ..> LangSel : usa
+RevisorL ..> NotifCenter : usa
+RevisorL ..> LangSel : usa
+
+' Pages usan UI components
+DashAdmin ..> Card : usa
+DashAdmin ..> Badge : usa
+SubmMgmt ..> Card : usa
+Wizard ..> Input : usa
+Wizard ..> Select : usa
+Wizard ..> Btn : usa
+Login ..> Input : usa
+Login ..> Btn : usa
+
+' Context dependencies
+Login --> AuthCtx
+Register --> AuthCtx
+DashAdmin --> AuthCtx
+DashAutor --> AuthCtx
+DashRev --> AuthCtx
+
+SubmMgmt --> SubCtx
+DetailAdmin --> SubCtx
+DetailAutor --> SubCtx
+DetailRev --> SubCtx
+
+' Services dependencies
+AuthCtx --> Storage
+SubCtx --> Storage
+NotifCenter --> Storage
+MsgAdmin --> Storage
+MsgAutor --> Storage
+MsgRev --> Storage
+
+LangSel --> I18n
+DashAdmin --> I18n
+DashAutor --> I18n
+
+' Toast notifications
+App ..> Toast : notificaciones globales
+
+note right of AuthCtx
+  **Context API**
+  Gestiona estado global
+  de autenticación
+end note
+
+note right of Storage
+  **localStorage API**
+  Actualmente usa localStorage
+  Migrar a API REST en v2.0
+end note
+
+note bottom of Routes
+  **Rutas implementadas:**
+  • Públicas: 2
+  • Admin: 6
+  • Autor: 5
+  • Revisor: 5
+  Total: 18 rutas
+end note
+
+note bottom of Wizard
+  **Wizard de 4 pasos:**
+  1. Información básica
+  2. Autores (ORCID)
+  3. Archivos
+  4. Revisión y envío
+end note
+
+@enduml

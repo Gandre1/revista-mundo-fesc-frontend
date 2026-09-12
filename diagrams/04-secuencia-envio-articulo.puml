@@ -1,0 +1,86 @@
+@startuml Secuencia - Envío de Artículo
+
+title Diagrama de Secuencia\nEnvío de Artículo por Autor
+
+skinparam sequenceBoxBorderColor #E30513
+skinparam participantBackgroundColor #FFFFFF
+skinparam participantBorderColor #E30513
+skinparam actorBackgroundColor #FFF9C4
+skinparam actorBorderColor #E30513
+
+actor "Autor" as Autor
+participant "SubmissionWizard" as Wizard
+participant "StorageService" as Storage
+participant "AuthContext" as Auth
+database "localStorage" as LS
+participant "NotificationCenter" as Notif
+actor "Administrador" as Admin
+
+== Autenticación ==
+Autor -> Wizard : Accede a "Nuevo Envío"
+Wizard -> Auth : getCurrentUser()
+Auth -> LS : Verificar sesión
+LS --> Auth : user data
+Auth --> Wizard : Usuario autenticado
+note right: Solo si está autenticado\npuede continuar
+
+== Paso 1: Información Básica ==
+Wizard -> Autor : Muestra formulario paso 1
+Autor -> Wizard : Ingresa título, resumen,\npalabras clave
+Wizard -> Wizard : Validar campos requeridos
+note right: Validación en cliente:\n• Título no vacío\n• Resumen >100 chars\n• Min 3 palabras clave
+
+Wizard -> Autor : Habilitar "Siguiente"
+Autor -> Wizard : Click "Siguiente"
+
+== Paso 2: Autores ==
+Wizard -> Autor : Muestra formulario de autores
+Autor -> Wizard : Agrega autor corresponsal\n(nombre, email, ORCID)
+Autor -> Wizard : Agrega coautores (opcional)
+Wizard -> Wizard : Validar al menos 1 autor
+Autor -> Wizard : Click "Siguiente"
+
+== Paso 3: Archivos ==
+Wizard -> Autor : Muestra carga de archivos
+Autor -> Wizard : Selecciona archivo PDF\n(simula carga)
+Wizard -> Wizard : Validar tipo y tamaño
+note right: Validación:\n• Tipo: PDF, DOC, DOCX\n• Tamaño: Max 10MB
+Autor -> Wizard : Click "Siguiente"
+
+== Paso 4: Revisión ==
+Wizard -> Autor : Muestra resumen completo
+Autor -> Wizard : Revisa todos los datos
+Autor -> Wizard : Acepta términos y condiciones
+Wizard -> Wizard : Validar checkbox aceptación
+
+== Envío Final ==
+Autor -> Wizard : Click "Enviar artículo"
+Wizard -> Storage : generateSubmissionId()
+Storage --> Wizard : "SUB-2024-001"
+
+Wizard -> Storage : addSubmission(submissionData)
+Storage -> LS : Guardar en 'fesc_submissions'
+LS --> Storage : OK
+
+Storage -> LS : Generar notificación para admin
+LS --> Storage : OK
+Storage --> Wizard : Envío creado exitosamente
+
+Wizard -> Autor : Redirigir a página de éxito\nMostrar ID: SUB-2024-001
+
+== Notificación a Admin ==
+Notif -> LS : Polling (cada 2 segundos)
+LS --> Notif : Nueva notificación disponible
+Notif -> Admin : Alerta: "Nuevo envío recibido"
+Admin -> Notif : Click en notificación
+Notif -> Admin : Redirigir a detalle del envío
+
+note over Autor, Admin
+  **Resultado:**
+  • Artículo guardado con ID único
+  • Estado inicial: "Nuevo"
+  • Admin notificado
+  • Autor puede ver en "Mis envíos"
+end note
+
+@enduml

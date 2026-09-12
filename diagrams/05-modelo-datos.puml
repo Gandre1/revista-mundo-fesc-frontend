@@ -1,0 +1,176 @@
+@startuml Modelo de Datos
+
+title Modelo de Datos (Entidades)\nRevista Mundo FESC
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #E30513
+  ArrowColor #3C3C3B
+}
+
+skinparam stereotypeCBackgroundColor #E8F5E9
+
+class User {
+  + id: string
+  + email: string
+  + password: string
+  + role: 'admin' | 'author' | 'reviewer'
+  + nombre: string
+  + apellidos?: string
+  + afiliacion?: string
+  + pais?: string
+  + orcid?: string
+  + nombreUsuario: string
+  + notificaciones?: boolean
+  + revisor?: boolean
+  --
+  Representa un usuario del sistema
+}
+
+class Submission {
+  + id: string
+  + titulo: string
+  + resumen: string
+  + palabrasClave: string[]
+  + seccion: string
+  + idioma: string
+  + autores: Author[]
+  + archivo?: FileInfo
+  + estado: Status
+  + fechaEnvio: string
+  + autorId: string
+  + autorNombre: string
+  + editorAsignado?: string
+  + comentarios: Comment[]
+  + borrador?: boolean
+  --
+  Representa un envío de artículo
+}
+
+class Author {
+  + nombre: string
+  + apellidos: string
+  + email: string
+  + afiliacion: string
+  + pais: string
+  + orcid?: string
+  + esCorresponsal: boolean
+  --
+  Autor de un artículo
+  (puede ser múltiple)
+}
+
+class FileInfo {
+  + nombre: string
+  + tamano: number
+  + fecha: string
+  --
+  Información del archivo adjunto
+}
+
+class Comment {
+  + id: string
+  + texto: string
+  + autor: string
+  + fecha: string
+  + tipo: 'interno' | 'revision' | 'autor'
+  --
+  Comentario en un envío
+}
+
+class Message {
+  + id: string
+  + asunto: string
+  + contenido: string
+  + remitenteId: string
+  + remitenteNombre: string
+  + destinatarioId: string
+  + destinatarioNombre: string
+  + fecha: string
+  + leido: boolean
+  + submissionId?: string
+  + archivoAdjunto?: FileAttachment
+  --
+  Mensaje entre usuarios
+}
+
+class FileAttachment {
+  + nombre: string
+  + tamano: number
+  --
+  Archivo adjunto en mensaje
+}
+
+class Notification {
+  + id: string
+  + tipo: 'info' | 'success' | 'warning' | 'danger'
+  + titulo: string
+  + mensaje: string
+  + fecha: string
+  + leida: boolean
+  + submissionId?: string
+  --
+  Notificación del sistema
+}
+
+enum Status {
+  Nuevo
+  En revisión
+  Revisiones requeridas
+  Aceptado
+  Rechazado
+  Publicado
+}
+
+enum Role {
+  admin
+  author
+  reviewer
+}
+
+' Relaciones
+User "1" -- "0..*" Submission : autor >
+User "1" -- "0..*" Message : remitente >
+User "1" -- "0..*" Message : destinatario >
+User "1" -- "0..*" Notification : recibe >
+
+Submission "1" *-- "1..*" Author : contiene >
+Submission "1" *-- "0..1" FileInfo : tiene >
+Submission "1" *-- "0..*" Comment : tiene >
+Submission "1" -- "0..*" Message : relacionado >
+Submission "1" -- "0..*" Notification : relacionado >
+Submission -- Status : tiene >
+
+Message "1" *-- "0..1" FileAttachment : puede tener >
+
+User -- Role : tiene >
+
+note right of User
+  **Roles y permisos:**
+  • Admin: acceso total
+  • Author: sus envíos
+  • Reviewer: asignados
+end note
+
+note right of Submission
+  **Estados del workflow:**
+  Nuevo → En revisión →
+  Revisiones/Aceptado/Rechazado →
+  Publicado
+end note
+
+note bottom of Message
+  **Sistema de mensajería:**
+  • Asociado opcionalmente
+    a un envío
+  • Filtrado por rol
+end note
+
+note bottom of Comment
+  **Tipos de comentarios:**
+  • interno: solo admin
+  • revision: de revisor
+  • autor: del autor
+end note
+
+@enduml

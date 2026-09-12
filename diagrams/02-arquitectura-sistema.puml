@@ -1,0 +1,139 @@
+@startuml Arquitectura del Sistema
+
+title Arquitectura del Sistema\nRevista Mundo FESC
+
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #E30513
+  ArrowColor #3C3C3B
+}
+
+skinparam package {
+  BackgroundColor #F5F5F5
+  BorderColor #E30513
+  FontSize 12
+  FontStyle bold
+}
+
+package "Frontend (React + TypeScript)" {
+  
+  package "App Layer" {
+    component [App.tsx\nRouterProvider] as App
+    component [routes.tsx\nReact Router v7] as Routes
+  }
+  
+  package "Layouts" {
+    component [AdminLayout] as AdminL #E8F5E9
+    component [AutorLayout] as AutorL #FFF9C4
+    component [RevisorLayout] as RevisorL #FFE0B2
+  }
+  
+  package "Pages / Views" {
+    component [Dashboard Admin] as DashA
+    component [Dashboard Autor] as DashB
+    component [Dashboard Revisor] as DashC
+    component [Login / Register] as Auth
+    component [Gestión Envíos] as Subm
+    component [Mensajería] as Msg
+    component [Perfil] as Prof
+  }
+  
+  package "Shared Components" {
+    component [SubmissionWizard\n4 pasos] as Wizard
+    component [NotificationCenter\nPolling 2s] as Notif
+    component [LanguageSelector\nES/EN] as Lang
+    component [SubmissionDetail] as Detail
+  }
+  
+  package "Context & State" {
+    component [AuthContext\nSesión usuario] as AuthCtx
+    component [SubmissionContext\nEstado envíos] as SubCtx
+  }
+  
+  package "Services" {
+    component [StorageService\nLocalStorage API] as Storage
+    component [i18n Service\nTraducciones] as I18n
+  }
+}
+
+package "Data Layer (LocalStorage)" {
+  database "localStorage" as LS {
+    [fesc_users]
+    [fesc_submissions]
+    [fesc_messages]
+    [fesc_notifications]
+    [fesc_language]
+  }
+}
+
+package "External Services" {
+  component [ORCID API\n(futuro)] as ORCID
+  component [DOI Service\n(futuro)] as DOI
+}
+
+' Conexiones principales
+App --> Routes
+Routes --> AdminL
+Routes --> AutorL
+Routes --> RevisorL
+
+AdminL --> DashA
+AdminL --> Subm
+AdminL --> Msg
+
+AutorL --> DashB
+AutorL --> Wizard
+
+RevisorL --> DashC
+
+DashA --> Notif
+DashB --> Notif
+DashC --> Notif
+
+Subm --> Detail
+Detail --> SubCtx
+
+Auth --> AuthCtx
+AuthCtx --> Storage
+
+Wizard --> Storage
+Subm --> Storage
+Msg --> Storage
+Notif --> Storage
+
+DashA --> Lang
+DashB --> Lang
+DashC --> Lang
+Lang --> I18n
+
+Storage --> LS
+I18n --> LS
+
+' Conexiones futuras
+Storage .down.> ORCID : futuro
+Storage .down.> DOI : futuro
+
+note right of LS
+  **Almacenamiento actual:**
+  Solo para prototipo
+  Migrar a backend en v2.0
+end note
+
+note right of AuthCtx
+  **Gestión de sesión:**
+  • getCurrentUser()
+  • login()
+  • logout()
+  • register()
+end note
+
+note left of Storage
+  **API centralizada:**
+  • CRUD usuarios
+  • CRUD envíos
+  • CRUD mensajes
+  • CRUD notificaciones
+  • Estadísticas
+end note
+
+@enduml

@@ -1,0 +1,154 @@
+@startuml Casos de Uso
+
+title Casos de Uso del Sistema\nRevista Mundo FESC
+
+left to right direction
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #E30513
+  ArrowColor #3C3C3B
+}
+
+actor "Autor" as Autor #FFF9C4
+actor "Administrador" as Admin #E8F5E9
+actor "Revisor" as Revisor #FFE0B2
+
+rectangle "Sistema de Gestión Editorial FESC" {
+  
+  package "Autenticación" {
+    usecase "Iniciar Sesión" as UC1
+    usecase "Registrarse" as UC2
+    usecase "Cerrar Sesión" as UC3
+    usecase "Gestionar Perfil" as UC4
+  }
+  
+  package "Gestión de Envíos" {
+    usecase "Enviar Artículo\n(Wizard 4 pasos)" as UC5
+    usecase "Ver Mis Envíos" as UC6
+    usecase "Editar Borrador" as UC7
+    usecase "Ver Todos los Envíos" as UC8
+    usecase "Asignar Revisor" as UC9
+    usecase "Cambiar Estado\nde Artículo" as UC10
+    usecase "Ver Artículos\nAsignados" as UC11
+    usecase "Revisar Artículo" as UC12
+  }
+  
+  package "Comunicación" {
+    usecase "Enviar Mensaje" as UC13
+    usecase "Leer Mensajes" as UC14
+    usecase "Ver Todos los\nMensajes del Sistema" as UC15
+    usecase "Agregar\nComentarios" as UC16
+  }
+  
+  package "Notificaciones" {
+    usecase "Recibir\nNotificaciones" as UC17
+    usecase "Marcar como Leída" as UC18
+    usecase "Ver Notificaciones" as UC19
+  }
+  
+  package "Estadísticas" {
+    usecase "Ver Dashboard\nPersonal" as UC20
+    usecase "Ver Dashboard\nGlobal" as UC21
+    usecase "Ver Estadísticas\ndel Sistema" as UC22
+  }
+  
+  package "Configuración" {
+    usecase "Cambiar Idioma\n(ES/EN)" as UC23
+    usecase "Configurar\nNotificaciones" as UC24
+  }
+}
+
+' Relaciones Autor
+Autor --> UC1
+Autor --> UC2
+Autor --> UC3
+Autor --> UC4
+Autor --> UC5
+Autor --> UC6
+Autor --> UC7
+Autor --> UC13
+Autor --> UC14
+Autor --> UC16
+Autor --> UC17
+Autor --> UC18
+Autor --> UC19
+Autor --> UC20
+Autor --> UC23
+Autor --> UC24
+
+' Relaciones Admin
+Admin --> UC1
+Admin --> UC3
+Admin --> UC4
+Admin --> UC8
+Admin --> UC9
+Admin --> UC10
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC21
+Admin --> UC22
+Admin --> UC23
+Admin --> UC24
+Admin --> UC5
+
+' Relaciones Revisor
+Revisor --> UC1
+Revisor --> UC2
+Revisor --> UC3
+Revisor --> UC4
+Revisor --> UC11
+Revisor --> UC12
+Revisor --> UC13
+Revisor --> UC14
+Revisor --> UC16
+Revisor --> UC17
+Revisor --> UC18
+Revisor --> UC19
+Revisor --> UC20
+Revisor --> UC23
+Revisor --> UC24
+
+' Extensiones e inclusiones
+UC5 ..> UC7 : <<include>>
+UC8 ..> UC10 : <<extend>>
+UC8 ..> UC9 : <<extend>>
+UC12 ..> UC16 : <<include>>
+UC13 ..> UC17 : <<triggers>>
+
+note right of UC5
+  **Pasos del wizard:**
+  1. Información básica
+  2. Autores
+  3. Archivos
+  4. Revisión y envío
+end note
+
+note right of UC8
+  **Solo Admin:**
+  Ve TODOS los envíos
+  del sistema
+end note
+
+note right of UC15
+  **Solo Admin:**
+  Acceso completo a
+  toda la mensajería
+end note
+
+note bottom of UC22
+  **Estadísticas incluyen:**
+  • Total envíos
+  • Tasa de aceptación
+  • Tiempo promedio revisión
+  • Distribución por estado
+end note
+
+@enduml

@@ -1,0 +1,102 @@
+---
+title: Arquitectura del Sistema - Revista Mundo FESC
+---
+graph TB
+    subgraph Frontend["Frontend (React + TypeScript)"]
+        subgraph App["App Layer"]
+            AppTSX[App.tsx<br/>RouterProvider]
+            Routes[routes.tsx<br/>React Router v7]
+        end
+        
+        subgraph Layouts["Layouts"]
+            AdminL[AdminLayout]
+            AutorL[AutorLayout]
+            RevisorL[RevisorLayout]
+        end
+        
+        subgraph Pages["Pages / Views"]
+            DashA[Dashboard Admin]
+            DashB[Dashboard Autor]
+            DashC[Dashboard Revisor]
+            Auth[Login / Register]
+            Subm[Gestión Envíos]
+            Msg[Mensajería]
+            Prof[Perfil]
+        end
+        
+        subgraph Shared["Shared Components"]
+            Wizard[SubmissionWizard<br/>4 pasos]
+            Notif[NotificationCenter<br/>Polling 2s]
+            Lang[LanguageSelector<br/>ES/EN]
+            Detail[SubmissionDetail]
+        end
+        
+        subgraph Context["Context & State"]
+            AuthCtx[AuthContext<br/>Sesión usuario]
+            SubCtx[SubmissionContext<br/>Estado envíos]
+        end
+        
+        subgraph Services["Services"]
+            Storage[StorageService<br/>LocalStorage API]
+            I18n[i18n Service<br/>Traducciones]
+        end
+    end
+    
+    subgraph DataLayer["Data Layer (LocalStorage)"]
+        LS[(localStorage)]
+        LS1[fesc_users]
+        LS2[fesc_submissions]
+        LS3[fesc_messages]
+        LS4[fesc_notifications]
+        LS5[fesc_language]
+    end
+    
+    AppTSX --> Routes
+    Routes --> AdminL
+    Routes --> AutorL
+    Routes --> RevisorL
+    
+    AdminL --> DashA
+    AdminL --> Subm
+    AdminL --> Msg
+    
+    AutorL --> DashB
+    AutorL --> Wizard
+    
+    RevisorL --> DashC
+    
+    DashA --> Notif
+    DashB --> Notif
+    DashC --> Notif
+    
+    Subm --> Detail
+    Detail --> SubCtx
+    
+    Auth --> AuthCtx
+    AuthCtx --> Storage
+    
+    Wizard --> Storage
+    Subm --> Storage
+    Msg --> Storage
+    Notif --> Storage
+    
+    DashA --> Lang
+    DashB --> Lang
+    DashC --> Lang
+    Lang --> I18n
+    
+    Storage --> LS
+    I18n --> LS
+    
+    LS --> LS1
+    LS --> LS2
+    LS --> LS3
+    LS --> LS4
+    LS --> LS5
+    
+    style AdminL fill:#E8F5E9
+    style AutorL fill:#FFF9C4
+    style RevisorL fill:#FFE0B2
+    style LS fill:#FFCDD2
+    style Storage fill:#E1F5FE
+    style I18n fill:#E1F5FE

@@ -1,0 +1,85 @@
+---
+title: Secuencia - Envío de Artículo
+---
+sequenceDiagram
+    participant Autor
+    participant Wizard as SubmissionWizard
+    participant Auth as AuthContext
+    participant Storage as StorageService
+    participant LS as localStorage
+    participant Notif as NotificationCenter
+    participant Admin as Administrador
+    
+    rect rgb(230, 245, 233)
+        Note over Autor,Auth: Autenticación
+        Autor->>Wizard: Accede a "Nuevo Envío"
+        Wizard->>Auth: getCurrentUser()
+        Auth->>LS: Verificar sesión
+        LS-->>Auth: user data
+        Auth-->>Wizard: Usuario autenticado
+        Note right of Wizard: Solo si está autenticado<br/>puede continuar
+    end
+    
+    rect rgb(255, 249, 196)
+        Note over Autor,Wizard: Paso 1: Información Básica
+        Wizard->>Autor: Muestra formulario paso 1
+        Autor->>Wizard: Ingresa título, resumen,<br/>palabras clave
+        Wizard->>Wizard: Validar campos requeridos
+        Note right of Wizard: Validación en cliente:<br/>• Título no vacío<br/>• Resumen >100 chars<br/>• Min 3 palabras clave
+        Wizard->>Autor: Habilitar "Siguiente"
+        Autor->>Wizard: Click "Siguiente"
+    end
+    
+    rect rgb(255, 224, 178)
+        Note over Autor,Wizard: Paso 2: Autores
+        Wizard->>Autor: Muestra formulario de autores
+        Autor->>Wizard: Agrega autor corresponsal<br/>(nombre, email, ORCID)
+        Autor->>Wizard: Agrega coautores (opcional)
+        Wizard->>Wizard: Validar al menos 1 autor
+        Autor->>Wizard: Click "Siguiente"
+    end
+    
+    rect rgb(255, 249, 196)
+        Note over Autor,Wizard: Paso 3: Archivos
+        Wizard->>Autor: Muestra carga de archivos
+        Autor->>Wizard: Selecciona archivo PDF<br/>(simula carga)
+        Wizard->>Wizard: Validar tipo y tamaño
+        Note right of Wizard: Validación:<br/>• Tipo: PDF, DOC, DOCX<br/>• Tamaño: Max 10MB
+        Autor->>Wizard: Click "Siguiente"
+    end
+    
+    rect rgb(255, 224, 178)
+        Note over Autor,Wizard: Paso 4: Revisión
+        Wizard->>Autor: Muestra resumen completo
+        Autor->>Wizard: Revisa todos los datos
+        Autor->>Wizard: Acepta términos y condiciones
+        Wizard->>Wizard: Validar checkbox aceptación
+    end
+    
+    rect rgb(200, 230, 201)
+        Note over Autor,Admin: Envío Final
+        Autor->>Wizard: Click "Enviar artículo"
+        Wizard->>Storage: generateSubmissionId()
+        Storage-->>Wizard: "SUB-2024-001"
+        
+        Wizard->>Storage: addSubmission(submissionData)
+        Storage->>LS: Guardar en 'fesc_submissions'
+        LS-->>Storage: OK
+        
+        Storage->>LS: Generar notificación para admin
+        LS-->>Storage: OK
+        Storage-->>Wizard: Envío creado exitosamente
+        
+        Wizard->>Autor: Redirigir a página de éxito<br/>Mostrar ID: SUB-2024-001
+    end
+    
+    rect rgb(227, 242, 253)
+        Note over Notif,Admin: Notificación a Admin
+        Notif->>LS: Polling (cada 2 segundos)
+        LS-->>Notif: Nueva notificación disponible
+        Notif->>Admin: Alerta: "Nuevo envío recibido"
+        Admin->>Notif: Click en notificación
+        Notif->>Admin: Redirigir a detalle del envío
+    end
+    
+    Note over Autor,Admin: Resultado:<br/>• Artículo guardado con ID único<br/>• Estado inicial: "Nuevo"<br/>• Admin notificado<br/>• Autor puede ver en "Mis envíos"

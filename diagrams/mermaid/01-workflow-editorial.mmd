@@ -1,0 +1,60 @@
+---
+title: Workflow Editorial - Revista Mundo FESC
+---
+stateDiagram-v2
+    [*] --> Nuevo: Autor envía artículo
+    
+    Nuevo: NUEVO
+    note right of Nuevo
+        Artículo recibido
+        Pendiente de asignación
+        Admin revisa envío
+    end note
+    
+    Nuevo --> EnRevision: Admin asigna revisor
+    
+    EnRevision: EN REVISIÓN
+    note right of EnRevision
+        Revisor lee manuscrito
+        Revisor agrega comentarios
+        Plazo: 2-3 semanas
+    end note
+    
+    EnRevision --> RevisionesRequeridas: Revisor solicita cambios
+    EnRevision --> Aceptado: Revisor recomienda aceptar
+    EnRevision --> Rechazado: Revisor recomienda rechazar
+    
+    RevisionesRequeridas: REVISIONES REQUERIDAS
+    note right of RevisionesRequeridas
+        Notificación al autor
+        Autor sube nueva versión
+        Vuelve a revisión
+    end note
+    
+    RevisionesRequeridas --> EnRevision: Autor sube correcciones
+    
+    Aceptado: ACEPTADO
+    note right of Aceptado
+        Artículo aprobado
+        Preparación para publicación
+        Notificación al autor
+    end note
+    
+    Rechazado: RECHAZADO
+    note right of Rechazado
+        Artículo no aceptado
+        Notificación al autor
+        Proceso terminado
+    end note
+    
+    Publicado: PUBLICADO
+    note right of Publicado
+        Artículo en revista
+        Asignación de DOI
+        Visible públicamente
+    end note
+    
+    Aceptado --> Publicado: Admin publica artículo
+    
+    Rechazado --> [*]
+    Publicado --> [*]

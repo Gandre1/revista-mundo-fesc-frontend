@@ -1,0 +1,145 @@
+---
+title: Modelo de Datos (Entidades) - Revista Mundo FESC
+---
+classDiagram
+    class User {
+        +string id
+        +string email
+        +string password
+        +Role role
+        +string nombre
+        +string apellidos
+        +string afiliacion
+        +string pais
+        +string orcid
+        +string nombreUsuario
+        +boolean notificaciones
+        +boolean revisor
+    }
+    
+    class Submission {
+        +string id
+        +string titulo
+        +string resumen
+        +string[] palabrasClave
+        +string seccion
+        +string idioma
+        +Author[] autores
+        +FileInfo archivo
+        +Status estado
+        +string fechaEnvio
+        +string autorId
+        +string autorNombre
+        +string editorAsignado
+        +Comment[] comentarios
+        +boolean borrador
+    }
+    
+    class Author {
+        +string nombre
+        +string apellidos
+        +string email
+        +string afiliacion
+        +string pais
+        +string orcid
+        +boolean esCorresponsal
+    }
+    
+    class FileInfo {
+        +string nombre
+        +number tamano
+        +string fecha
+    }
+    
+    class Comment {
+        +string id
+        +string texto
+        +string autor
+        +string fecha
+        +CommentType tipo
+    }
+    
+    class Message {
+        +string id
+        +string asunto
+        +string contenido
+        +string remitenteId
+        +string remitenteNombre
+        +string destinatarioId
+        +string destinatarioNombre
+        +string fecha
+        +boolean leido
+        +string submissionId
+        +FileAttachment archivoAdjunto
+    }
+    
+    class FileAttachment {
+        +string nombre
+        +number tamano
+    }
+    
+    class Notification {
+        +string id
+        +NotifType tipo
+        +string titulo
+        +string mensaje
+        +string fecha
+        +boolean leida
+        +string submissionId
+    }
+    
+    class Status {
+        <<enumeration>>
+        Nuevo
+        En_revision
+        Revisiones_requeridas
+        Aceptado
+        Rechazado
+        Publicado
+    }
+    
+    class Role {
+        <<enumeration>>
+        admin
+        author
+        reviewer
+    }
+    
+    class CommentType {
+        <<enumeration>>
+        interno
+        revision
+        autor
+    }
+    
+    class NotifType {
+        <<enumeration>>
+        info
+        success
+        warning
+        danger
+    }
+    
+    %% Relaciones
+    User "1" -- "0..*" Submission : autor
+    User "1" -- "0..*" Message : remitente
+    User "1" -- "0..*" Message : destinatario
+    User "1" -- "0..*" Notification : recibe
+    
+    Submission "1" *-- "1..*" Author : contiene
+    Submission "1" *-- "0..1" FileInfo : tiene
+    Submission "1" *-- "0..*" Comment : tiene
+    Submission "1" -- "0..*" Message : relacionado
+    Submission "1" -- "0..*" Notification : relacionado
+    Submission -- Status : tiene
+    
+    Message "1" *-- "0..1" FileAttachment : puede_tener
+    
+    User -- Role : tiene
+    Comment -- CommentType : tiene
+    Notification -- NotifType : tiene
+    
+    note for User "Roles y permisos:\n• Admin: acceso total\n• Author: sus envíos\n• Reviewer: asignados"
+    note for Submission "Estados del workflow:\nNuevo → En revisión →\nRevisiones/Aceptado/Rechazado →\nPublicado"
+    note for Message "Sistema de mensajería:\n• Asociado opcionalmente a un envío\n• Filtrado por rol"
+    note for Comment "Tipos de comentarios:\n• interno: solo admin\n• revision: de revisor\n• autor: del autor"

@@ -1,0 +1,119 @@
+---
+title: Casos de Uso del Sistema - Revista Mundo FESC
+---
+graph LR
+    Autor((Autor))
+    Admin((Administrador))
+    Revisor((Revisor))
+    
+    subgraph Sistema["Sistema de Gestión Editorial FESC"]
+        subgraph Auth["Autenticación"]
+            UC1[Iniciar Sesión]
+            UC2[Registrarse]
+            UC3[Cerrar Sesión]
+            UC4[Gestionar Perfil]
+        end
+        
+        subgraph Envios["Gestión de Envíos"]
+            UC5[Enviar Artículo<br/>Wizard 4 pasos]
+            UC6[Ver Mis Envíos]
+            UC7[Editar Borrador]
+            UC8[Ver Todos los Envíos]
+            UC9[Asignar Revisor]
+            UC10[Cambiar Estado]
+            UC11[Ver Artículos Asignados]
+            UC12[Revisar Artículo]
+        end
+        
+        subgraph Comunicacion["Comunicación"]
+            UC13[Enviar Mensaje]
+            UC14[Leer Mensajes]
+            UC15[Ver Todos los Mensajes]
+            UC16[Agregar Comentarios]
+        end
+        
+        subgraph Notificaciones["Notificaciones"]
+            UC17[Recibir Notificaciones]
+            UC18[Marcar como Leída]
+            UC19[Ver Notificaciones]
+        end
+        
+        subgraph Estadisticas["Estadísticas"]
+            UC20[Ver Dashboard Personal]
+            UC21[Ver Dashboard Global]
+            UC22[Ver Estadísticas Sistema]
+        end
+        
+        subgraph Config["Configuración"]
+            UC23[Cambiar Idioma ES/EN]
+            UC24[Configurar Notificaciones]
+        end
+    end
+    
+    %% Relaciones Autor
+    Autor --> UC1
+    Autor --> UC2
+    Autor --> UC3
+    Autor --> UC4
+    Autor --> UC5
+    Autor --> UC6
+    Autor --> UC7
+    Autor --> UC13
+    Autor --> UC14
+    Autor --> UC16
+    Autor --> UC17
+    Autor --> UC18
+    Autor --> UC19
+    Autor --> UC20
+    Autor --> UC23
+    Autor --> UC24
+    
+    %% Relaciones Admin
+    Admin --> UC1
+    Admin --> UC3
+    Admin --> UC4
+    Admin --> UC5
+    Admin --> UC8
+    Admin --> UC9
+    Admin --> UC10
+    Admin --> UC13
+    Admin --> UC14
+    Admin --> UC15
+    Admin --> UC16
+    Admin --> UC17
+    Admin --> UC18
+    Admin --> UC19
+    Admin --> UC21
+    Admin --> UC22
+    Admin --> UC23
+    Admin --> UC24
+    
+    %% Relaciones Revisor
+    Revisor --> UC1
+    Revisor --> UC2
+    Revisor --> UC3
+    Revisor --> UC4
+    Revisor --> UC11
+    Revisor --> UC12
+    Revisor --> UC13
+    Revisor --> UC14
+    Revisor --> UC16
+    Revisor --> UC17
+    Revisor --> UC18
+    Revisor --> UC19
+    Revisor --> UC20
+    Revisor --> UC23
+    Revisor --> UC24
+    
+    %% Extensiones
+    UC5 -.->|include| UC7
+    UC8 -.->|extend| UC10
+    UC8 -.->|extend| UC9
+    UC12 -.->|include| UC16
+    UC13 -.->|triggers| UC17
+    
+    style Autor fill:#FFF9C4
+    style Admin fill:#E8F5E9
+    style Revisor fill:#FFE0B2
+    style UC8 fill:#FFEBEE
+    style UC15 fill:#FFEBEE

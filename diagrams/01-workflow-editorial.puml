@@ -1,0 +1,61 @@
+@startuml Workflow Editorial - Revista Mundo FESC
+
+title Workflow Editorial Completo\nRevista Mundo FESC
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor<<Inicial>> #E8F5E9
+  BackgroundColor<<Proceso>> #FFF9C4
+  BackgroundColor<<Exitoso>> #C8E6C9
+  BackgroundColor<<Rechazado>> #FFCDD2
+  BorderColor #E30513
+  FontSize 12
+}
+
+[*] --> Nuevo : Autor envía artículo
+
+state Nuevo <<Inicial>> : **NUEVO**\n----\nArtículo recibido\nPendiente de asignación\nAdmin revisa envío
+
+Nuevo --> EnRevision : Admin asigna revisor
+
+state EnRevision <<Proceso>> : **EN REVISIÓN**\n----\nRevisor lee manuscrito\nRevisor agrega comentarios\nPlazo: 2-3 semanas
+
+EnRevision --> RevisionesRequeridas : Revisor solicita cambios
+EnRevision --> Aceptado : Revisor recomienda aceptar
+EnRevision --> Rechazado : Revisor recomienda rechazar
+
+state RevisionesRequeridas <<Proceso>> : **REVISIONES REQUERIDAS**\n----\nNotificación al autor\nAutor sube nueva versión\nVuelve a revisión
+
+RevisionesRequeridas --> EnRevision : Autor sube correcciones
+
+state Aceptado <<Exitoso>> : **ACEPTADO**\n----\nArticulo aprobado\nPreparación para publicación\nNotificación al autor
+
+state Rechazado <<Rechazado>> : **RECHAZADO**\n----\nArtículo no aceptado\nNotificación al autor\nProceso terminado
+
+state Publicado <<Exitoso>> : **PUBLICADO**\n----\nArtículo en revista\nAsignación de DOI\nVisible públicamente
+
+Aceptado --> Publicado : Admin publica artículo
+
+Rechazado --> [*]
+Publicado --> [*]
+
+note right of Nuevo
+  **Roles involucrados:**
+  • Autor: envía manuscrito
+  • Admin: recibe y asigna
+end note
+
+note right of EnRevision
+  **Roles involucrados:**
+  • Revisor: evalúa artículo
+  • Admin: supervisa proceso
+end note
+
+note right of Publicado
+  **Resultado final:**
+  • DOI asignado
+  • Indexado en bases de datos
+  • Disponible para lectura
+end note
+
+@enduml

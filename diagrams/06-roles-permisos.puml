@@ -1,0 +1,125 @@
+@startuml Roles y Permisos
+
+title Matriz de Roles y Permisos\nRevista Mundo FESC
+
+skinparam componentStyle rectangle
+
+package "Sistema de Permisos" {
+
+  package "Rol: ADMINISTRADOR" #E8F5E9 {
+    [Ver TODOS los envíos] as AdminView
+    [Crear envíos] as AdminCreate
+    [Editar cualquier envío] as AdminEdit
+    [Eliminar envíos] as AdminDelete
+    [Cambiar estados] as AdminStatus
+    [Asignar revisores] as AdminAssign
+    [Ver TODOS los mensajes] as AdminMsg
+    [Enviar mensajes] as AdminSend
+    [Ver estadísticas globales] as AdminStats
+    [Gestionar usuarios] as AdminUsers
+    [Acceso a /admin/*] as AdminRoute
+  }
+
+  package "Rol: AUTOR" #FFF9C4 {
+    [Ver solo MIS envíos] as AuthorView
+    [Crear nuevos envíos] as AuthorCreate
+    [Editar MIS borradores] as AuthorEdit
+    [Ver MIS mensajes] as AuthorMsg
+    [Enviar mensajes] as AuthorSend
+    [Responder comentarios] as AuthorComment
+    [Ver MI dashboard] as AuthorDash
+    [Subir archivos] as AuthorUpload
+    [Acceso a /autor/*] as AuthorRoute
+  }
+
+  package "Rol: REVISOR" #FFE0B2 {
+    [Ver artículos ASIGNADOS] as RevView
+    [Agregar comentarios revisión] as RevComment
+    [Recomendar decisión] as RevDecision
+    [Ver mensajes de asignaciones] as RevMsg
+    [Enviar mensajes] as RevSend
+    [Descargar manuscritos] as RevDownload
+    [Ver MI dashboard revisor] as RevDash
+    [Acceso a /revisor/*] as RevRoute
+  }
+
+}
+
+package "Recursos del Sistema" {
+  database "Envíos (Submissions)" as SubDB
+  database "Mensajes (Messages)" as MsgDB
+  database "Notificaciones" as NotifDB
+  database "Usuarios" as UserDB
+  database "Estadísticas" as StatsDB
+}
+
+' Conexiones Admin
+AdminView --> SubDB : **TODOS** los registros
+AdminEdit --> SubDB : **Cualquier** envío
+AdminDelete --> SubDB : **Cualquier** envío
+AdminStatus --> SubDB : Cambiar estado
+AdminAssign --> SubDB : Asignar revisor
+AdminMsg --> MsgDB : **TODOS** los mensajes
+AdminSend --> MsgDB : Crear mensaje
+AdminStats --> StatsDB : Acceso completo
+AdminUsers --> UserDB : CRUD completo
+
+' Conexiones Autor
+AuthorView --> SubDB : **Solo** autorId = userId
+AuthorCreate --> SubDB : Crear nuevo
+AuthorEdit --> SubDB : **Solo** MIS borradores
+AuthorMsg --> MsgDB : remitenteId = userId\nOR destinatarioId = userId
+AuthorSend --> MsgDB : Crear mensaje
+AuthorComment --> SubDB : Agregar comentario tipo 'autor'
+AuthorUpload --> SubDB : Adjuntar archivos
+
+' Conexiones Revisor
+RevView --> SubDB : **Solo** editorAsignado = userName
+RevComment --> SubDB : Agregar comentario tipo 'revision'
+RevDecision --> SubDB : Recomendar estado
+RevMsg --> MsgDB : Mensajes relacionados\ncon asignaciones
+RevSend --> MsgDB : Crear mensaje
+RevDownload --> SubDB : Descargar archivo
+
+' Notificaciones (todos)
+AdminView --> NotifDB : Todas
+AuthorView --> NotifDB : Solo suyas
+RevView --> NotifDB : Solo suyas
+
+note right of SubDB
+  **Filtrado por rol:**
+  • Admin: WHERE 1=1 (todos)
+  • Autor: WHERE autorId = :userId
+  • Revisor: WHERE editorAsignado = :userName
+end note
+
+note right of MsgDB
+  **Filtrado de mensajes:**
+  • Admin: todos los mensajes
+  • Autor: WHERE remitenteId = :userId
+           OR destinatarioId = :userId
+  • Revisor: WHERE (remitenteId = :userId
+              OR destinatarioId = :userId)
+             AND submissionId IN (asignados)
+end note
+
+note bottom of AdminView
+  **Principio de mínimo privilegio:**
+  Cada rol solo accede a lo necesario
+  para realizar sus funciones
+end note
+
+legend right
+  **Leyenda:**
+  |= Color |= Rol |
+  | <#E8F5E9> | Administrador |
+  | <#FFF9C4> | Autor |
+  | <#FFE0B2> | Revisor |
+  
+  **Niveles de acceso:**
+  • **TODOS**: Sin restricción
+  • **MIS/SOLO**: Filtrado por usuario
+  • **ASIGNADOS**: Filtrado por asignación
+endlegend
+
+@enduml
