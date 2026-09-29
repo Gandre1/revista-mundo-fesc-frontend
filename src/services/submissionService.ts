@@ -17,6 +17,13 @@ export const submissionService = {
     });
   },
 
+  updateSubmission: async (id: string, data: any) => {
+    return apiFetch(`/submissions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   // Finalizar Borrador (Paso Final)
   finalizeSubmission: async (id: string) => {
     return apiFetch<{ message: string; submission: any }>(`/submissions/${id}/finalize`, {

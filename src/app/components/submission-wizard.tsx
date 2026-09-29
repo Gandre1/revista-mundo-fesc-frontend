@@ -2,11 +2,15 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Check, Upload, X, FileText, AlertTriangle } from 'lucide-react';
 import { useSubmissions } from './submission-context';
+import { submissionService } from '../../services/submissionService';
+import { toast } from 'sonner';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
 const FESC_WINE = '#630b00';
+
+
 
 // Tipos
 interface FileUpload {
@@ -88,6 +92,8 @@ export function SubmissionWizard() {
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [showCollaboratorDialog, setShowCollaboratorDialog] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState<Contributor | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const [submissionData, setSubmissionData] = useState<SubmissionData>({
     idioma: 'es',
@@ -119,8 +125,39 @@ export function SubmissionWizard() {
     isPrincipal: false,
   });
 
-  const handleNextStep = () => {
-    if (currentStep < STEPS.length) {
+  const handleNextStep = async () => {
+    console.log('>>> [Siguiente] Paso actual:', currentStep);
+
+    if (currentStep === 1 || currentStep === 2) {
+      setLoading(true);
+      try {
+        const keywordsString = Array.isArray(submissionData.palabrasClave)
+          ? submissionData.palabrasClave.join(', ')
+          : submissionData.palabrasClave || '';
+
+        const payload = {
+          titulo: submissionData.titulo || '',
+          resumen: submissionData.resumen || '',
+          palabras_clave: keywordsString,
+          seccion: submissionData.seccion || 'articulos_investigacion',
+          idioma: submissionData.idioma || 'es',
+        };
+
+        console.log('>>> Enviando API desde handleNextStep:', payload);
+        const response = await submissionService.createSubmission(payload);
+        console.log('>>> Respuesta backend:', response);
+        
+        setSubmissionId(response.submissionId);
+
+        // Avanzamos de paso
+        setCurrentStep(currentStep + 1);
+        window.scrollTo(0, 0);
+      } catch (error: any) {
+        console.error('>>> Error en handleNextStep:', error);
+      } finally {
+        setLoading(false);
+      }
+    } else if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
       window.scrollTo(0, 0);
     }
@@ -202,15 +239,35 @@ export function SubmissionWizard() {
     navigate('/admin/submissions');
   };
 
-  const handleSaveForLater = () => {
-    // Guardar como borrador
-    const draftToSave = {
-      ...submissionData,
-      status: 'draft' as const,
-    };
-    addSubmission(draftToSave);
-    alert('Borrador guardado correctamente');
-    navigate('/admin/submissions');
+  const handleSaveForLater = async () => {
+    console.log('>>> [Guardar Borrador] Invocando API backend...');
+    setLoading(true);
+    try {
+      const keywordsString = Array.isArray(submissionData.palabrasClave)
+        ? submissionData.palabrasClave.join(', ')
+        : submissionData.palabrasClave || '';
+
+      const payload = {
+        titulo: submissionData.titulo || '',
+        resumen: submissionData.resumen || '',
+        palabras_clave: keywordsString,
+        seccion: submissionData.seccion || 'articulos_investigacion',
+        idioma: submissionData.idioma || 'es',
+      };
+
+      console.log('>>> Payload enviado:', payload);
+      const response = await submissionService.createSubmission(payload);
+      console.log('>>> Respuesta de MySQL:', response);
+
+      setSubmissionId(response.submissionId);
+      toast.success('Borrador guardado exitosamente en la base de datos');
+      navigate('/admin/submissions');
+    } catch (error: any) {
+      console.error('>>> Error en backend:', error);
+      toast.error('Error al guardar en base de datos');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const canProceedFromStep1 = 

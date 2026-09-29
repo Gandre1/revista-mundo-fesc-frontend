@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Check, Upload, X, FileText, Plus, Trash2, Save } from 'lucide-react';
 import { storage, Author } from '../lib/storage';
 import { useAuth } from './auth-context';
+import { submissionService } from '../../services/submissionService';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -30,6 +31,7 @@ export function SubmissionWizardNew() {
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [submissionId, setSubmissionId] = useState<number | null>(null);
 
   // Redirigir al login si no hay usuario
   useEffect(() => {
@@ -73,54 +75,120 @@ export function SubmissionWizardNew() {
     esCorresponsal: false,
   });
 
-  // Cargar borrador si existe
+  // Cargar borrador si existe en storage local
   useEffect(() => {
-    const draft = storage.getDraft();
-    if (draft && draft.titulo) {
-      if (confirm('Se encontró un borrador guardado. ¿Desea continuar con él?')) {
-        setFormData({
-          titulo: draft.titulo || '',
-          seccion: draft.seccion || '',
-          idioma: draft.idioma || 'Español',
-          resumen: draft.resumen || '',
-          palabrasClave: draft.palabrasClave || [],
-          autores: draft.autores || [],
-          archivos: draft.archivos || [],
-          checklistItems: draft.checklistItems || {
-            noPublicado: false,
-            formatoWord: false,
-            urlsReferencias: false,
-            formato: false,
-            formatosAdicionales: false,
-            requisitosEstilisticos: false,
-          },
-          consentimientoPrivacidad: draft.consentimientoPrivacidad || false,
-          comentariosEditor: draft.comentariosEditor || '',
-          referencias: draft.referencias || '',
-        });
+    const savedDraft = localStorage.getItem('submission_draft');
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        
+        // Preguntamos al usuario si desea continuar el borrador
+        const confirmRestore = window.confirm(
+          'Se encontró un borrador guardado localmente. ¿Desea continuar con él?'
+        );
+
+        if (confirmRestore) {
+          // Carga los datos del formulario
+          if (parsed.formData) setFormData(parsed.formData);
+          
+          // Restaurar el ID del backend para no duplicar
+          if (parsed.submissionId) {
+            setSubmissionId(parsed.submissionId);
+          }
+        } else {
+          localStorage.removeItem('submission_draft');
+        }
+      } catch (e) {
+        console.error('Error al parsear el borrador local:', e);
       }
     }
   }, []);
 
-  // Guardar borrador automáticamente
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (formData.titulo) {
-        storage.saveDraft(formData);
-      }
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [formData]);
+  // Guardar en la Base de Datos
+  const saveToBackend = async () => {
+    console.log('>>> [BACKEND] Sincronizando con MySQL...');
+    setSaving(true);
 
-  const handleNext = () => {
+    try {
+      const keywordsString = Array.isArray(formData.palabrasClave)
+        ? formData.palabrasClave.join(', ')
+        : formData.palabrasClave || '';
+
+      const payload = {
+        titulo: formData.titulo || '',
+        resumen: formData.resumen || '',
+        palabras_clave: keywordsString,
+        seccion: formData.seccion || 'Artículos de Investigación',
+        idioma: formData.idioma || 'es',
+      };
+
+      let response;
+
+      // Si ya tenemos un ID, actualizamos (PUT)
+      if (submissionId) {
+        response = await submissionService.updateSubmission(submissionId, payload);
+      } else {
+        // Si no tenemos ID, creamos (POST)
+        response = await submissionService.createSubmission(payload);
+        
+        // Si el backend nos responde con el nuevo ID, lo guardamos en el estado
+        if (response && response.submissionId) {
+          setSubmissionId(response.submissionId);
+        }
+      }
+
+      // Guarda en localStorage la combinación de datos + ID
+      const currentId = submissionId || response?.submissionId;
+      localStorage.setItem(
+        'submission_draft',
+        JSON.stringify({
+          formData,
+          submissionId: currentId,
+          updatedAt: new Date().toISOString()
+        })
+      );
+
+      return response;
+    } catch (error) {
+      console.error('>>> [BACKEND] Error al conectar con el servidor:', error);
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Guardar Borrador manualmente
+  const handleSaveDraft = async () => {
+    try {
+      await saveToBackend('draft');
+      alert('Borrador guardado exitosamente en la base de datos');
+    } catch (error) {
+      alert('Error al guardar el borrador en la base de datos');
+    }
+  };
+
+  const handleNext = async () => {
+    console.log('>>> Avanzando paso actual:', currentStep);
+    
+    // Si estamos en Paso 1 o 2, sincronizamos con el backend
+    if (currentStep === 1 || currentStep === 2) {
+      try {
+        await saveToBackend('draft');
+      } catch (e) {
+        console.warn('Continuando navegación local aunque falló la API backend');
+      }
+    }
+
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
+      window.scrollTo(0, 0);
     }
   };
 
   const handlePrev = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+      window.scrollTo(0, 0);
     }
   };
 
@@ -169,19 +237,16 @@ export function SubmissionWizardNew() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Verificar tamaño máximo (20 MB)
       if (file.size > 20 * 1024 * 1024) {
         alert('El archivo excede el tamaño máximo de 20 MB');
         return;
       }
-      // Guardar archivo temporal y mostrar diálogo de tipo
       setTempFile({
         nombre: file.name,
         tamano: file.size
       });
       setShowFileTypeDialog(true);
     }
-    // Limpiar el input para permitir subir el mismo archivo de nuevo
     e.target.value = '';
   };
 
@@ -207,42 +272,22 @@ export function SubmissionWizardNew() {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!user) return;
 
-    setSaving(true);
+    try {
+      await saveToBackend('submitted');
+      storage.clearDraft();
 
-    const newSubmission = {
-      id: storage.generateSubmissionId(),
-      titulo: formData.titulo,
-      resumen: formData.resumen,
-      palabrasClave: formData.palabrasClave,
-      seccion: formData.seccion,
-      idioma: formData.idioma,
-      autores: formData.autores,
-      archivos: formData.archivos.map(archivo => ({
-        nombre: archivo.nombre,
-        tamano: archivo.tamano,
-        tipo: archivo.tipo,
-        fecha: new Date().toISOString().split('T')[0]
-      })),
-      estado: 'Nuevo' as const,
-      fechaEnvio: new Date().toISOString(),
-      autorId: user.id,
-      autorNombre: `${user.nombre} ${user.apellidos || ''}`.trim(),
-      comentarios: []
-    };
+      if (submissionId) {
+        localStorage.setItem('lastSubmissionId', String(submissionId));
+      }
 
-    storage.addSubmission(newSubmission);
-    storage.clearDraft();
-
-    // Guardar ID para mostrarlo en la página de éxito
-    localStorage.setItem('lastSubmissionId', newSubmission.id);
-
-    setSaving(false);
-
-    // Redirigir a página de éxito
-    navigate('/submission/success');
+      alert('¡Envío completado con éxito!');
+      navigate('/submission/success');
+    } catch (error) {
+      alert('Error al enviar el artículo. Por favor revisa la consola.');
+    }
   };
 
   const canProceed = () => {
@@ -1183,15 +1228,13 @@ export function SubmissionWizardNew() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => {
-                storage.saveDraft(formData);
-                alert('Borrador guardado exitosamente');
-              }}
-              className="px-6 py-2 border rounded hover:bg-gray-50 flex items-center gap-2"
+              onClick={handleSaveDraft}
+              disabled={saving}
+              className="px-6 py-2 border rounded hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
               style={{ borderColor: FESC_RED, color: FESC_RED }}
             >
               <Save className="w-5 h-5" />
-              Guardar Borrador
+              {saving ? 'Guardando...' : 'Guardar Borrador'}
             </button>
 
             {currentStep < STEPS.length ? (
