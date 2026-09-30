@@ -1,1409 +1,1330 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { Check, Upload, X, FileText, AlertTriangle } from 'lucide-react';
-import { useSubmissions } from './submission-context';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { Check, Upload, X, FileText, Plus, Trash2, Save } from 'lucide-react';
+import { storage, Author } from '../lib/storage';
+import { useAuth } from './auth-context';
 import { submissionService } from '../../services/submissionService';
-import { toast } from 'sonner';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
-const FESC_WINE = '#630b00';
-
-
-
-// Tipos
-interface FileUpload {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  fileType: 'article' | 'other';
-}
-
-interface Contributor {
-  id: string;
-  nombre: string;
-  apellidos: string;
-  email: string;
-  pais: string;
-  afiliacion: string;
-  orcid?: string;
-  isPrincipal: boolean;
-}
-
-interface SubmissionData {
-  // Step 1: Inicio
-  idioma: 'es' | 'en';
-  titulo: string;
-  seccion: string;
-  checklistItems: boolean[];
-  consentimientoPrivacidad: boolean;
-  
-  // Step 2: Detalles
-  tituloIngles?: string;
-  palabrasClave: string;
-  resumen: string;
-  referencias: string;
-  
-  // Step 3: Archivos
-  files: FileUpload[];
-  
-  // Step 4: Colaboradores
-  colaboradores: Contributor[];
-  
-  // Step 5: Para editores
-  comentariosEditor: string;
-}
 
 const STEPS = [
-  { id: 1, name: 'Inicio', key: 'inicio' },
-  { id: 2, name: 'Detalles', key: 'detalles' },
-  { id: 3, name: 'Cargar archivos', key: 'archivos' },
-  { id: 4, name: 'Colaboradores/as', key: 'colaboradores' },
-  { id: 5, name: 'Para los editores/as', key: 'editores' },
-  { id: 6, name: 'Revisión', key: 'revision' },
+  { id: 1, name: 'Inicio' },
+  { id: 2, name: 'Detalles' },
+  { id: 3, name: 'Cargar archivos' },
+  { id: 4, name: 'Colaboradores/as' },
+  { id: 5, name: 'Para editores/as' },
+  { id: 6, name: 'Revisión' },
 ];
 
 const SECCIONES = [
   'Artículos de Investigación',
-  'Artículo Originales',
-  'Reflexión',
-  'Revisión',
-  'Prácticas educativas',
-  'Artículos de Revisión',
   'Artículos Originales',
-  'Artículos para Reflexión',
+  'Artículos de Revisión',
+  'Reflexión',
+  'Prácticas educativas',
 ];
 
-const CHECKLIST_ITEMS = [
-  'El envío no ha sido publicado previamente ni se ha sometido a consideración por ninguna otra revista (o se ha proporcionado una explicación al respecto en los Comentarios al editor/a).',
-  'El archivo de envío está en formato Microsoft Word.',
-  'Se proporcionan direcciones URL para cada una de las referencias incorporadas en el trabajo.',
-  'El texto tiene un interlineado sencillo de (1), tamaño carta, en letra Times New Roman 12 justificado, con márgenes de 2,5 cm por todos los lados.',
-  'El autor del artículo debe diligenciar los formatos de: Carta de originalidad, Acta de cesión de derechos, Ficha datos autores.',
-  'El texto cumple con los requisitos estilísticos y bibliográficos establecidos en las Directrices del autor/a.',
-];
-
-export function SubmissionWizard() {
+export function SubmissionWizardNew() {
   const navigate = useNavigate();
-  const { addSubmission, updateSubmission } = useSubmissions();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
-  const [showFileDialog, setShowFileDialog] = useState(false);
-  const [showCollaboratorDialog, setShowCollaboratorDialog] = useState(false);
-  const [editingCollaborator, setEditingCollaborator] = useState<Contributor | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [submissionId, setSubmissionId] = useState<number | null>(null);
 
-  const [submissionData, setSubmissionData] = useState<SubmissionData>({
-    idioma: 'es',
+  // Redirigir al login si no hay usuario
+  useEffect(() => {
+    if (!user) {
+      alert('Debe iniciar sesión para enviar un artículo');
+      navigate('/login');
+    }
+  }, [user, navigate]);
+
+  const [formData, setFormData] = useState({
     titulo: '',
     seccion: '',
-    checklistItems: new Array(CHECKLIST_ITEMS.length).fill(false),
-    consentimientoPrivacidad: false,
-    palabrasClave: '',
+    idioma: 'Español',
     resumen: '',
-    referencias: '',
-    files: [],
-    colaboradores: [],
+    palabrasClave: [] as string[],
+    autores: [] as Author[],
+    archivos: [] as { nombre: string; tamano: number; tipo?: string }[],
+    checklistItems: {
+      noPublicado: false,
+      formatoWord: false,
+      urlsReferencias: false,
+      formato: false,
+      formatosAdicionales: false,
+      requisitosEstilisticos: false,
+    },
+    consentimientoPrivacidad: false,
     comentariosEditor: '',
+    referencias: '',
   });
 
-  const [newFile, setNewFile] = useState({
-    name: '',
-    fileType: 'article' as 'article' | 'other',
-  });
-
-  const [newCollaborator, setNewCollaborator] = useState<Contributor>({
-    id: '',
+  const [keywordInput, setKeywordInput] = useState('');
+  const [showAuthorDialog, setShowAuthorDialog] = useState(false);
+  const [showFileTypeDialog, setShowFileTypeDialog] = useState(false);
+  const [tempFile, setTempFile] = useState<{ nombre: string; tamano: number } | null>(null);
+  const [currentAuthor, setCurrentAuthor] = useState<Author>({
     nombre: '',
     apellidos: '',
     email: '',
-    pais: '',
     afiliacion: '',
-    orcid: '',
-    isPrincipal: false,
+    pais: '',
+    esCorresponsal: false,
   });
 
-  const handleNextStep = async () => {
-    console.log('>>> [Siguiente] Paso actual:', currentStep);
-
-    if (currentStep === 1 || currentStep === 2) {
-      setLoading(true);
+  // Cargar borrador si existe en storage local
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('submission_draft');
+    if (savedDraft) {
       try {
-        const keywordsString = Array.isArray(submissionData.palabrasClave)
-          ? submissionData.palabrasClave.join(', ')
-          : submissionData.palabrasClave || '';
-
-        const payload = {
-          titulo: submissionData.titulo || '',
-          resumen: submissionData.resumen || '',
-          palabras_clave: keywordsString,
-          seccion: submissionData.seccion || 'articulos_investigacion',
-          idioma: submissionData.idioma || 'es',
-        };
-
-        console.log('>>> Enviando API desde handleNextStep:', payload);
-        const response = await submissionService.createSubmission(payload);
-        console.log('>>> Respuesta backend:', response);
+        const parsed = JSON.parse(savedDraft);
         
-        setSubmissionId(response.submissionId);
+        // Preguntamos al usuario si desea continuar el borrador
+        const confirmRestore = window.confirm(
+          'Se encontró un borrador guardado localmente. ¿Desea continuar con él?'
+        );
 
-        // Avanzamos de paso
-        setCurrentStep(currentStep + 1);
-        window.scrollTo(0, 0);
-      } catch (error: any) {
-        console.error('>>> Error en handleNextStep:', error);
-      } finally {
-        setLoading(false);
+        if (confirmRestore) {
+          // Carga los datos del formulario
+          if (parsed.formData) setFormData(parsed.formData);
+          
+          // Restaurar el ID del backend para no duplicar
+          if (parsed.submissionId) {
+            setSubmissionId(parsed.submissionId);
+            fetchUploadedFiles(parsed.submissionId);
+          }
+
+        } else {
+          localStorage.removeItem('submission_draft');
+        }
+      } catch (e) {
+        console.error('Error al parsear el borrador local:', e);
       }
-    } else if (currentStep < STEPS.length) {
+    }
+  }, []);
+
+  // Guardar en la Base de Datos
+  const saveToBackend = async () => {
+    console.log('>>> [BACKEND] Sincronizando con MySQL...');
+    setSaving(true);
+
+    try {
+      const keywordsString = Array.isArray(formData.palabrasClave)
+        ? formData.palabrasClave.join(', ')
+        : formData.palabrasClave || '';
+
+      const payload = {
+        titulo: formData.titulo || '',
+        resumen: formData.resumen || '',
+        palabras_clave: keywordsString,
+        seccion: formData.seccion || 'Artículos de Investigación',
+        idioma: formData.idioma || 'es',
+      };
+
+      let response;
+
+      // Si ya tenemos un ID, actualizamos (PUT)
+      if (submissionId) {
+        response = await submissionService.updateSubmission(submissionId, payload);
+      } else {
+        // Si no tenemos ID, creamos (POST)
+        response = await submissionService.createSubmission(payload);
+        
+        // Si el backend nos responde con el nuevo ID, lo guardamos en el estado
+        if (response && response.submissionId) {
+          setSubmissionId(response.submissionId);
+        }
+      }
+
+      // Guarda en localStorage la combinación de datos + ID
+      const currentId = submissionId || response?.submissionId;
+      localStorage.setItem(
+        'submission_draft',
+        JSON.stringify({
+          formData,
+          submissionId: currentId,
+          updatedAt: new Date().toISOString()
+        })
+      );
+
+      return response;
+    } catch (error) {
+      console.error('>>> [BACKEND] Error al conectar con el servidor:', error);
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Guardar Borrador manualmente
+  const handleSaveDraft = async () => {
+    try {
+      await saveToBackend('draft');
+      alert('Borrador guardado exitosamente en la base de datos');
+    } catch (error) {
+      alert('Error al guardar el borrador en la base de datos');
+    }
+  };
+
+  const handleNext = async () => {
+    console.log('>>> Avanzando paso actual:', currentStep);
+    
+    // Si estamos en Paso 1 o 2, sincronizamos con el backend
+    if (currentStep === 1 || currentStep === 2) {
+      try {
+        await saveToBackend('draft');
+      } catch (e) {
+        console.warn('Continuando navegación local aunque falló la API backend');
+      }
+    }
+
+    if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
       window.scrollTo(0, 0);
     }
   };
 
-  const handlePreviousStep = () => {
+  const handlePrev = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
       window.scrollTo(0, 0);
     }
   };
 
-  const handleAddFile = () => {
-    if (newFile.name) {
-      const file: FileUpload = {
-        id: Date.now().toString(),
-        name: newFile.name,
-        size: Math.floor(Math.random() * 5000000) + 100000,
-        type: 'application/pdf',
-        fileType: newFile.fileType,
-      };
-      setSubmissionData({
-        ...submissionData,
-        files: [...submissionData.files, file],
+  const addKeyword = () => {
+    if (keywordInput.trim() && formData.palabrasClave.length < 10) {
+      setFormData({
+        ...formData,
+        palabrasClave: [...formData.palabrasClave, keywordInput.trim()]
       });
-      setNewFile({ name: '', fileType: 'article' });
-      setShowFileDialog(false);
+      setKeywordInput('');
     }
   };
 
-  const handleRemoveFile = (id: string) => {
-    setSubmissionData({
-      ...submissionData,
-      files: submissionData.files.filter(f => f.id !== id),
+  const removeKeyword = (index: number) => {
+    setFormData({
+      ...formData,
+      palabrasClave: formData.palabrasClave.filter((_, i) => i !== index)
     });
   };
 
-  const handleAddCollaborator = () => {
-    if (newCollaborator.nombre && newCollaborator.email) {
-      const collab: Contributor = {
-        ...newCollaborator,
-        id: Date.now().toString(),
-      };
-      setSubmissionData({
-        ...submissionData,
-        colaboradores: [...submissionData.colaboradores, collab],
+  const handleAddAuthor = () => {
+    if (currentAuthor.nombre && currentAuthor.email) {
+      setFormData({
+        ...formData,
+        autores: [...formData.autores, { ...currentAuthor }]
       });
-      setNewCollaborator({
-        id: '',
+      setCurrentAuthor({
         nombre: '',
         apellidos: '',
         email: '',
-        pais: '',
         afiliacion: '',
-        orcid: '',
-        isPrincipal: false,
+        pais: '',
+        esCorresponsal: false,
       });
-      setShowCollaboratorDialog(false);
-      setEditingCollaborator(null);
+      setShowAuthorDialog(false);
     }
   };
 
-  const handleRemoveCollaborator = (id: string) => {
-    setSubmissionData({
-      ...submissionData,
-      colaboradores: submissionData.colaboradores.filter(c => c.id !== id),
+  const removeAuthor = (index: number) => {
+    setFormData({
+      ...formData,
+      autores: formData.autores.filter((_, i) => i !== index)
     });
   };
 
-  const handleSubmit = () => {
-    // Guardar y enviar
-    const submissionToSave = {
-      ...submissionData,
-      status: 'submitted' as const,
-      dateSubmitted: new Date().toISOString(),
-    };
-    addSubmission(submissionToSave);
-    alert('¡Artículo enviado con éxito!');
-    navigate('/admin/submissions');
-  };
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipoDocumento: string = 'manuscrito') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const handleSaveForLater = async () => {
-    console.log('>>> [Guardar Borrador] Invocando API backend...');
-    setLoading(true);
+    if (!submissionId) {
+      alert('Primero debes guardar la información básica del artículo.');
+      return;
+    }
+
     try {
-      const keywordsString = Array.isArray(submissionData.palabrasClave)
-        ? submissionData.palabrasClave.join(', ')
-        : submissionData.palabrasClave || '';
+      setSaving(true);
+      console.log('>>> [FRONTEND] Subiendo archivo real a MySQL...');
+      
+      const response = await submissionService.uploadFile(submissionId, file, tipoDocumento);
+      console.log('>>> [BACKEND] Respuesta de subida:', response);
 
-      const payload = {
-        titulo: submissionData.titulo || '',
-        resumen: submissionData.resumen || '',
-        palabras_clave: keywordsString,
-        seccion: submissionData.seccion || 'articulos_investigacion',
-        idioma: submissionData.idioma || 'es',
+      const newFile = {
+        id: response.file.id,
+        nombre: response.file.nombre_original,
+        tamano: response.file.tamano,
+        tipo: response.file.tipo || tipoDocumento,
       };
 
-      console.log('>>> Payload enviado:', payload);
-      const response = await submissionService.createSubmission(payload);
-      console.log('>>> Respuesta de MySQL:', response);
+      setFormData((prev) => ({
+        ...prev,
+        archivos: [...prev.archivos, newFile],
+      }));
 
-      setSubmissionId(response.submissionId);
-      toast.success('Borrador guardado exitosamente en la base de datos');
-      navigate('/admin/submissions');
+      alert('¡Archivo subido correctamente!');
     } catch (error: any) {
-      console.error('>>> Error en backend:', error);
-      toast.error('Error al guardar en base de datos');
+      console.error('>>> [FRONTEND] Error al subir el archivo:', error);
+      alert(`Error: ${error.message}`);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const canProceedFromStep1 = 
-    submissionData.titulo.trim() !== '' &&
-    submissionData.seccion !== '' &&
-    submissionData.checklistItems.every(item => item) &&
-    submissionData.consentimientoPrivacidad;
+  const fetchUploadedFiles = async (id: number | string) => {
+    try {
+      const data = await submissionService.getSubmissionFiles(String(id));
+      if (data && data.files) {
+        const formattedFiles = data.files.map((f: any) => ({
+          id: f.id,
+          nombre: f.nombre_original,
+          tamano: f.tamano,
+          tipo: f.tipo,
+        }));
 
-  const canProceedFromStep2 = 
-    submissionData.palabrasClave.trim() !== '' &&
-    submissionData.resumen.trim() !== '';
+        setFormData((prev) => ({
+          ...prev,
+          archivos: formattedFiles,
+        }));
+      }
+    } catch (err) {
+      console.error('Error al cargar archivos subidos:', err);
+    }
+  };
 
-  const canProceedFromStep3 = submissionData.files.length > 0;
+  const handleFileTypeSelect = (tipo: string) => {
+    if (tempFile) {
+      setFormData({
+        ...formData,
+        archivos: [...formData.archivos, {
+          nombre: tempFile.nombre,
+          tamano: tempFile.tamano,
+          tipo
+        }]
+      });
+      setTempFile(null);
+    }
+    setShowFileTypeDialog(false);
+  };
+
+  const removeFile = async (archivo: any, index: number) => {
+    if (!window.confirm('¿Está seguro de eliminar este archivo?')) return;
+
+    try {
+      setSaving(true);
+
+      if (archivo && archivo.id) {
+        console.log('>>> [FRONTEND] Eliminando archivo de MySQL con ID:', archivo.id);
+        await submissionService.deleteFile(archivo.id);
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        archivos: prev.archivos.filter((item: any, i: number) => {
+          if (archivo && archivo.id) {
+            return item.id !== archivo.id;
+          }
+          return i !== index;
+        }),
+      }));
+
+      console.log('>>> [FRONTEND] Archivo eliminado con éxito.');
+    } catch (error: any) {
+      console.error('>>> [FRONTEND] Error al eliminar el archivo:', error);
+      alert(`No se pudo eliminar el archivo: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user) return;
+
+    try {
+      await saveToBackend('submitted');
+      storage.clearDraft();
+
+      if (submissionId) {
+        localStorage.setItem('lastSubmissionId', String(submissionId));
+      }
+
+      alert('¡Envío completado con éxito!');
+      navigate('/submission/success');
+    } catch (error) {
+      alert('Error al enviar el artículo. Por favor revisa la consola.');
+    }
+  };
+
+  const canProceed = () => {
+    switch (currentStep) {
+      case 1:
+        const allChecked = Object.values(formData.checklistItems).every(v => v === true);
+        return formData.titulo && formData.seccion && formData.idioma && allChecked && formData.consentimientoPrivacidad;
+      case 2:
+        return formData.resumen && formData.palabrasClave.length > 0 && formData.referencias;
+      case 3:
+        return formData.archivos.length > 0 && formData.archivos.every(a => a.tipo);
+      case 4:
+        return formData.autores.length > 0;
+      case 5:
+        return true;
+      case 6:
+        return true;
+      default:
+        return true;
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-5xl mx-auto">
-        {/* Breadcrumb */}
-        <div className="mb-6">
-          <nav className="text-sm">
-            <Link to="/" className="hover:underline" style={{ color: FESC_RED }}>
-              Inicio
-            </Link>
-            <span className="mx-2 text-gray-400">/</span>
-            <span className="text-gray-600">Hacer un envío</span>
-          </nav>
-        </div>
-
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 p-6">
-          <div className="flex justify-between items-start mb-2">
-            <h1 className="text-2xl" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-              Hacer un envío
-            </h1>
-            <Link
-              to="/submissions"
-              className="text-sm hover:underline"
-              style={{ color: FESC_RED }}
-            >
-              Guardar para más tarde
-            </Link>
-          </div>
-          <p className="text-sm text-gray-600 mb-4">
-            Enviando a la sección <span style={{ color: FESC_RED, fontWeight: '600' }}>
-              {submissionData.seccion || 'Artículo Originales'}
-            </span> en <span style={{ fontWeight: '600' }}>Español</span>
-            {submissionData.seccion && (
-              <> · <Link to="#" className="hover:underline" style={{ color: FESC_RED }}>Cambiar</Link></>
-            )}
-          </p>
-
-          {/* Progress Steps */}
-          <div className="flex items-center justify-between">
-            {STEPS.map((step, index) => (
-              <div key={step.id} className="flex items-center flex-1">
-                <div className="flex flex-col items-center flex-1">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm transition-all ${
-                      step.id < currentStep
-                        ? 'text-white'
-                        : step.id === currentStep
-                        ? 'text-white ring-2 ring-offset-2'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}
-                    style={{
-                      backgroundColor: step.id <= currentStep ? FESC_RED : undefined,
-                      ringColor: step.id === currentStep ? FESC_RED : undefined,
-                    }}
-                  >
-                    {step.id < currentStep ? <Check size={18} /> : step.id}
-                  </div>
-                  <span
-                    className={`text-xs mt-2 text-center ${
-                      step.id <= currentStep ? 'font-medium' : 'text-gray-500'
-                    }`}
-                    style={{
-                      color: step.id <= currentStep ? FESC_GRAY : undefined,
-                    }}
-                  >
-                    {step.name}
-                  </span>
-                </div>
-                {index < STEPS.length - 1 && (
-                  <div
-                    className={`h-0.5 flex-1 mx-2 transition-all ${
-                      step.id < currentStep ? '' : 'bg-gray-200'
-                    }`}
-                    style={{
-                      backgroundColor: step.id < currentStep ? FESC_RED : undefined,
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Step Content */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-          {/* STEP 1: Inicio */}
-          {currentStep === 1 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl mb-4" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Antes de empezar
-                </h2>
-                <div className="prose max-w-none text-sm space-y-3 mb-6">
-                  <p style={{ color: FESC_GRAY }}>
-                    Gracias por enviar su trabajo a Mundo FESC. Se le pedirá que cargue archivos durante este proceso de envío, así que asegúrese de tener lo siguiente preparado:
-                  </p>
-                  <ul className="list-disc ml-6 space-y-2" style={{ color: FESC_GRAY }}>
-                    <li>Texto completo del manuscrito en formato Word (con todos los metadatos excluidos del archivo).</li>
-                    <li>Información relacionada con los colaboradores (incluidos todos los detalles de contacto para el autor del envío principal).</li>
-                    <li>Formularios de Consentimiento (si es aplicable).</li>
-                  </ul>
-                  <p style={{ color: FESC_GRAY }}>
-                    Los cuatro primeros pasos de los cinco del proceso de presentación requerirán completar todos los detalles de su artículo. Cuando complete todos los pasos, revise los detalles en la página antes de enviar el envío editorial para revisión. La información puede modificarse antes de la entrega y antes de la publicación final.
-                  </p>
-                  <p style={{ color: FESC_RED, fontWeight: '500' }}>
-                    Una vez iniciado, el estado puede guardar su envío para su recuperación posterior y estado. Puede volver a enviar y revisar todas las formas de cumplir con los parámetros editoriales de Mundo FESC.
-                  </p>
-                </div>
-              </div>
-
-              {/* Idioma del envío */}
-              <div>
-                <label className="block text-sm mb-3" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Idioma del envío <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="text-sm mb-2" style={{ color: FESC_GRAY }}>
-                  Seleccione el idioma principal del envío.
-                </div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="idioma"
-                      value="en"
-                      checked={submissionData.idioma === 'en'}
-                      onChange={() => setSubmissionData({ ...submissionData, idioma: 'en' })}
-                      className="w-4 h-4"
-                      style={{ accentColor: FESC_RED }}
-                    />
-                    <span style={{ color: FESC_GRAY }}>Inglés</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="idioma"
-                      value="es"
-                      checked={submissionData.idioma === 'es'}
-                      onChange={() => setSubmissionData({ ...submissionData, idioma: 'es' })}
-                      className="w-4 h-4"
-                      style={{ accentColor: FESC_RED }}
-                    />
-                    <span style={{ color: FESC_GRAY }}>Español</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Título */}
-              <div>
-                <label htmlFor="titulo" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Título <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <input
-                  id="titulo"
-                  type="text"
-                  value={submissionData.titulo}
-                  onChange={(e) => setSubmissionData({ ...submissionData, titulo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
-
-              {/* Sección */}
-              <div>
-                <label htmlFor="seccion" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Sección <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="text-sm mb-3" style={{ color: FESC_GRAY }}>
-                  Los artículos deben enviarse en una de las secciones de la revista.
-                </div>
-                <select
-                  id="seccion"
-                  value={submissionData.seccion}
-                  onChange={(e) => setSubmissionData({ ...submissionData, seccion: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
+    <div className="max-w-5xl mx-auto">
+      {/* Progress Steps */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          {STEPS.map((step, index) => (
+            <div key={step.id} className="flex items-center flex-1">
+              <div className="flex flex-col items-center flex-1">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                    currentStep > step.id
+                      ? 'text-white'
+                      : currentStep === step.id
+                      ? 'text-white'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                  style={{
+                    backgroundColor: currentStep >= step.id ? FESC_RED : undefined
                   }}
                 >
-                  <option value="">Seleccione una sección</option>
-                  {SECCIONES.map((seccion) => (
-                    <option key={seccion} value={seccion}>
-                      {seccion}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Lista de verificación */}
-              <div>
-                <label className="block text-sm mb-3" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Lista de verificación del envío <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="text-sm mb-4" style={{ color: FESC_GRAY }}>
-                  Todos los envíos deben cumplir los siguientes requisitos.
+                  {currentStep > step.id ? <Check className="w-5 h-5" /> : step.id}
                 </div>
-                <div className="space-y-3">
-                  {CHECKLIST_ITEMS.map((item, index) => (
-                    <label key={index} className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={submissionData.checklistItems[index]}
-                        onChange={(e) => {
-                          const newItems = [...submissionData.checklistItems];
-                          newItems[index] = e.target.checked;
-                          setSubmissionData({ ...submissionData, checklistItems: newItems });
-                        }}
-                        className="w-4 h-4 mt-0.5 rounded"
-                        style={{ accentColor: FESC_RED }}
-                      />
-                      <span className="text-sm" style={{ color: FESC_GRAY }}>
-                        {item}
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                <span className="text-xs mt-2 text-center" style={{ color: currentStep === step.id ? FESC_RED : FESC_GRAY }}>
+                  {step.name}
+                </span>
               </div>
+              {index < STEPS.length - 1 && (
+                <div
+                  className="flex-1 h-1 mx-2"
+                  style={{
+                    backgroundColor: currentStep > step.id ? FESC_RED : '#e5e7eb'
+                  }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
-              {/* Consentimiento de privacidad */}
-              <div className="border border-gray-300 rounded p-4 bg-gray-50">
-                <label className="block text-sm mb-3" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Consentimiento de privacidad <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer">
+      {/* Form Content */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        {/* Step 1: Inicio */}
+        {currentStep === 1 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Hacer un envío
+            </h2>
+
+            <div className="bg-blue-50 border border-blue-200 rounded p-4">
+              <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Antes de empezar</h3>
+              <p className="text-sm text-gray-700 mb-2">
+                Gracias por su envío a Mundo FESC Journal. Se le pedirá que cargue archivos, identifique coautores y proporcione información como el título y el resumen.
+              </p>
+              <p className="text-sm text-gray-700 mb-2">
+                Lea nuestras directrices de envío si aún no lo ha hecho. Cuando rellene los formularios, proporcione todos los detalles posibles para ayudar a nuestros editores/as a evaluar su trabajo.
+              </p>
+              <p className="text-sm text-gray-700">
+                Una vez iniciado, podrá guardar el envío y recuperarlo más tarde, así como revisar y corregir cualquier información antes de remitirlo.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
+                Idioma del envío <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <p className="text-xs text-gray-600 mb-2">Seleccione el idioma principal del envío.</p>
+              <select
+                value={formData.idioma}
+                onChange={(e) => setFormData({ ...formData, idioma: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <option value="Español">Español</option>
+                <option value="Inglés">Inglés</option>
+                <option value="Portugués">Portugués</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
+                Título <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.titulo}
+                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                placeholder="Ingrese el título completo del artículo"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
+                Sección <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <p className="text-xs text-gray-600 mb-2">Los artículos deben enviarse a una de las secciones de la revista.</p>
+              <select
+                value={formData.seccion}
+                onChange={(e) => setFormData({ ...formData, seccion: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <option value="">Seleccione una sección</option>
+                {SECCIONES.map(seccion => (
+                  <option key={seccion} value={seccion}>{seccion}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Lista de verificación del envío <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <p className="text-xs text-gray-600 mb-3">Todos los envíos deben cumplir los siguientes requisitos.</p>
+              <div className="space-y-3 bg-gray-50 p-4 rounded">
+                <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
-                    checked={submissionData.consentimientoPrivacidad}
-                    onChange={(e) =>
-                      setSubmissionData({ ...submissionData, consentimientoPrivacidad: e.target.checked })
-                    }
-                    className="w-4 h-4 mt-0.5 rounded"
+                    id="check1"
+                    checked={formData.checklistItems.noPublicado}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, noPublicado: e.target.checked }
+                    })}
+                    className="mt-1"
                     style={{ accentColor: FESC_RED }}
                   />
-                  <span className="text-sm" style={{ color: FESC_GRAY }}>
-                    Sí, estoy de acuerdo en que mis datos personales sean almacenados con la{' '}
-                    <Link to="#" className="hover:underline" style={{ color: FESC_RED }}>
-                      declaración de privacidad
-                    </Link>.
-                  </span>
-                </label>
-              </div>
-            </div>
-          )}
+                  <label htmlFor="check1" className="text-sm text-gray-700">
+                    El envío no ha sido publicado previamente ni se ha sometido a consideración por ninguna otra revista (o se ha proporcionado una explicación al respecto en los Comentarios al editor/a).
+                  </label>
+                </div>
 
-          {/* STEP 2: Detalles */}
-          {currentStep === 2 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl mb-2" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Detalles del envío
-                </h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  Proporcione los detalles clave relacionados con el trabajo académico a publicar en el envío en cuestión.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 mb-4">
-                <button
-                  className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
-                  style={{ color: FESC_RED, borderColor: FESC_RED }}
-                >
-                  Inglés
-                </button>
-                <button
-                  className="px-3 py-1.5 text-sm border rounded"
-                  style={{ backgroundColor: FESC_RED, color: 'white', borderColor: FESC_RED }}
-                >
-                  Español
-                </button>
-              </div>
-
-              {/* Título (Editable) */}
-              <div>
-                <label htmlFor="titulo-detalle" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Título <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="flex gap-2">
+                <div className="flex items-start gap-3">
                   <input
-                    id="titulo-detalle"
-                    type="text"
-                    value={submissionData.titulo}
-                    onChange={(e) => setSubmissionData({ ...submissionData, titulo: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                    style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = FESC_RED;
-                      e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = '#d1d5db';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
+                    type="checkbox"
+                    id="check2"
+                    checked={formData.checklistItems.formatoWord}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, formatoWord: e.target.checked }
+                    })}
+                    className="mt-1"
+                    style={{ accentColor: FESC_RED }}
                   />
-                  <button
-                    className="px-3 py-2 text-sm border rounded hover:bg-gray-50"
-                    style={{ color: FESC_RED, borderColor: FESC_RED }}
-                  >
-                    🗑️
-                  </button>
+                  <label htmlFor="check2" className="text-sm text-gray-700">
+                    El archivo de envío está en formato Microsoft Word.
+                  </label>
                 </div>
-              </div>
 
-              {/* Palabras clave */}
-              <div>
-                <label htmlFor="palabras-clave" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Palabras clave <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="text-sm mb-2" style={{ color: FESC_GRAY }}>
-                  Palabras clave que resumen su manuscrito o expresión de la clave de búsqueda que se usan para indexar las letras principales del envío.
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="check3"
+                    checked={formData.checklistItems.urlsReferencias}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, urlsReferencias: e.target.checked }
+                    })}
+                    className="mt-1"
+                    style={{ accentColor: FESC_RED }}
+                  />
+                  <label htmlFor="check3" className="text-sm text-gray-700">
+                    Se proporcionan direcciones URL para cada una de las referencias incorporadas en el trabajo.
+                  </label>
                 </div>
-                <textarea
-                  id="palabras-clave"
-                  value={submissionData.palabrasClave}
-                  onChange={(e) => setSubmissionData({ ...submissionData, palabrasClave: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none resize-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
 
-              {/* Resumen */}
-              <div>
-                <label htmlFor="resumen" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Resumen <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="mb-2 flex gap-2">
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    <strong>B</strong>
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    <em>I</em>
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    X₂
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    X²
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    🔗
-                  </button>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="check4"
+                    checked={formData.checklistItems.formato}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, formato: e.target.checked }
+                    })}
+                    className="mt-1"
+                    style={{ accentColor: FESC_RED }}
+                  />
+                  <label htmlFor="check4" className="text-sm text-gray-700">
+                    El texto tiene un interlineado sencillo de (1), tamaño carta, en letra Times New Roman 12 justificado, con márgenes de 2,5 cm por todos los lados. Todas las figuras y tablas se encuentran colocadas en los lugares del texto apropiados.
+                  </label>
                 </div>
-                <textarea
-                  id="resumen"
-                  value={submissionData.resumen}
-                  onChange={(e) => setSubmissionData({ ...submissionData, resumen: e.target.value })}
-                  rows={8}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none resize-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-                <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
-                  <AlertTriangle size={16} />
-                  <span>0 de 0 palabras</span>
-                </div>
-              </div>
 
-              {/* Referencias */}
-              <div>
-                <label htmlFor="referencias" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Referencias <span style={{ color: FESC_RED }}>*</span>
-                </label>
-                <div className="text-sm mb-2" style={{ color: FESC_GRAY }}>
-                  Introduzca cada referencia o una línea nueva, sin formatear ni agregar ningún otro texto o utilice el formato ISO 690.
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="check5"
+                    checked={formData.checklistItems.formatosAdicionales}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, formatosAdicionales: e.target.checked }
+                    })}
+                    className="mt-1"
+                    style={{ accentColor: FESC_RED }}
+                  />
+                  <label htmlFor="check5" className="text-sm text-gray-700">
+                    El autor del artículo debe diligenciar los formatos de: Carta de originalidad, Acta de cesión de derechos, Ficha datos autores.
+                  </label>
                 </div>
-                <textarea
-                  id="referencias"
-                  value={submissionData.referencias}
-                  onChange={(e) => setSubmissionData({ ...submissionData, referencias: e.target.value })}
-                  rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none resize-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
+
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="check6"
+                    checked={formData.checklistItems.requisitosEstilisticos}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      checklistItems: { ...formData.checklistItems, requisitosEstilisticos: e.target.checked }
+                    })}
+                    className="mt-1"
+                    style={{ accentColor: FESC_RED }}
+                  />
+                  <label htmlFor="check6" className="text-sm text-gray-700">
+                    El texto cumple con los requisitos estilísticos y bibliográficos establecidos en las Directrices del autor/a, que aparecen en la sección Envíos de la revista.
+                  </label>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* STEP 3: Cargar archivos */}
-          {currentStep === 3 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl mb-2" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Cargar archivos
-                </h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  Proporcione todos los archivos que nuestro equipo editorial necesite para evaluar su envío. Además de los datos prácticos, puede incluir envíos de datos, declaraciones de conflictos de interés u otros archivos adicionales si resultara que ayudan a nuestros editores.
-                </p>
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Consentimiento de privacidad <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <div className="flex items-start gap-3 bg-gray-50 p-4 rounded">
+                <input
+                  type="checkbox"
+                  id="privacy"
+                  checked={formData.consentimientoPrivacidad}
+                  onChange={(e) => setFormData({ ...formData, consentimientoPrivacidad: e.target.checked })}
+                  className="mt-1"
+                  style={{ accentColor: FESC_RED }}
+                />
+                <label htmlFor="privacy" className="text-sm text-gray-700">
+                  Sí, consiento que mis datos se recopilen y se almacenen de acuerdo con la declaración de privacidad.
+                </label>
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Lista de archivos */}
-              {submissionData.files.length > 0 && (
-                <div className="space-y-3 mb-6">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Archivos
-                  </h3>
-                  {submissionData.files.map((file) => (
-                    <div
-                      key={file.id}
-                      className="border border-gray-300 rounded p-4 flex items-start justify-between bg-gray-50"
-                    >
-                      <div className="flex items-start gap-3 flex-1">
-                        <FileText size={24} style={{ color: FESC_RED }} />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium" style={{ color: FESC_GRAY }}>
-                            {file.name}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
-                          </div>
-                          <div className="mt-2">
-                            <span className="text-xs font-medium" style={{ color: FESC_RED }}>
-                              ¿Qué tipo de archivo es? 
-                            </span>
-                            <div className="flex gap-2 mt-1">
-                              <button
-                                className="text-xs px-2 py-1 border rounded hover:bg-white"
-                                style={{ color: FESC_RED, borderColor: FESC_RED }}
-                              >
-                                Texto del artículo
-                              </button>
-                              <button
-                                className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-white text-gray-600"
-                              >
-                                Otro
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                          style={{ color: FESC_RED, borderColor: FESC_RED }}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleRemoveFile(file.id)}
-                          className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                          style={{ color: FESC_RED, borderColor: FESC_RED }}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+        {/* Step 2: Detalles */}
+        {currentStep === 2 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Detalles del envío
+            </h2>
+            <p className="text-sm text-gray-600">
+              Proporcione los detalles siguientes para ayudarnos a gestionar su envío en nuestro sistema.
+            </p>
 
-              {/* Botón añadir archivo */}
-              {!showFileDialog ? (
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Título <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.titulo}
+                onChange={(e) => setFormData({ ...formData, titulo: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                placeholder="Ingrese el título completo del artículo"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Palabras clave <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <p className="text-xs text-gray-600 mb-2">
+                Las palabras clave normalmente son expresiones de una a tres palabras que se usan para indicar los temas principales del envío.
+              </p>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                  placeholder="Escriba una palabra clave y presione Enter"
+                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = FESC_RED;
+                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                />
                 <button
-                  onClick={() => setShowFileDialog(true)}
-                  className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
-                  style={{ color: FESC_RED, borderColor: FESC_RED }}
+                  type="button"
+                  onClick={addKeyword}
+                  className="px-4 py-2 text-white rounded hover:opacity-90"
+                  style={{ backgroundColor: FESC_RED }}
                 >
-                  Añadir archivo
+                  <Plus className="w-5 h-5" />
                 </button>
-              ) : (
-                <div className="border border-gray-300 rounded p-6 bg-gray-50">
-                  <h3 className="text-base mb-4" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Cargar archivo
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="file-upload" className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                        Nombre del archivo <span style={{ color: FESC_RED }}>*</span>
-                      </label>
-                      <input
-                        id="file-upload"
-                        type="text"
-                        value={newFile.name}
-                        onChange={(e) => setNewFile({ ...newFile, name: e.target.value })}
-                        placeholder="Art+13.pdf"
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                        style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = FESC_RED;
-                          e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      />
-                    </div>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {formData.palabrasClave.map((keyword, index) => (
+                  <span
+                    key={index}
+                    className="px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                    style={{ backgroundColor: `${FESC_RED}20`, color: FESC_RED }}
+                  >
+                    {keyword}
+                    <button onClick={() => removeKeyword(index)}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                Seleccionado: {formData.palabrasClave.length > 0 ? formData.palabrasClave.join(', ') : 'Ninguno'}
+              </p>
+            </div>
 
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-                      <Upload size={48} className="mx-auto mb-3 text-gray-400" />
-                      <p className="text-sm text-gray-600 mb-2">
-                        Haga clic para seleccionar un archivo o arrástrelo aquí
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Tamaño máximo: 50 MB
-                      </p>
-                    </div>
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Resumen <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <textarea
+                value={formData.resumen}
+                onChange={(e) => setFormData({ ...formData, resumen: e.target.value })}
+                rows={6}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                placeholder="Escriba el resumen del artículo (máximo 250 palabras)"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+            </div>
 
-                    <div className="flex gap-3">
+            <div>
+              <label className="block text-sm mb-2 font-semibold" style={{ color: FESC_GRAY }}>
+                Referencias <span style={{ color: FESC_RED }}>*</span>
+              </label>
+              <p className="text-xs text-gray-600 mb-2">
+                Introduzca cada referencia en una línea nueva, así podrán ser extraídas y registradas por separado.
+              </p>
+              <textarea
+                value={formData.referencias}
+                onChange={(e) => setFormData({ ...formData, referencias: e.target.value })}
+                rows={6}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                placeholder="Ingrese las referencias bibliográficas, una por línea"
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Cargar archivos */}
+        {currentStep === 3 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Cargar archivos
+            </h2>
+            <p className="text-sm text-gray-600">
+              Proporcione todos los archivos que nuestro equipo editorial necesite para evaluar su envío. Puede subir múltiples archivos de diferentes tipos.
+            </p>
+
+            <div className="bg-blue-50 border border-blue-200 rounded p-4">
+              <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Tipos de archivos que puede enviar:</h3>
+              <ul className="text-sm text-gray-700 space-y-1">
+                <li>• <strong>Texto del artículo:</strong> Manuscrito principal en Word o PDF</li>
+                <li>• <strong>Figuras/Imágenes:</strong> Gráficos, fotografías, diagramas (JPG, PNG, TIFF)</li>
+                <li>• <strong>Tablas suplementarias:</strong> Datos tabulados adicionales</li>
+                <li>• <strong>Material suplementario:</strong> Anexos, apéndices, videos</li>
+                <li>• <strong>Conjunto de datos:</strong> Datos de investigación en Excel, CSV, etc.</li>
+                <li>• <strong>Declaraciones:</strong> Conflictos de interés, permisos, consentimientos</li>
+                <li>• <strong>Cartas:</strong> Carta de presentación para el editor</li>
+              </ul>
+            </div>
+
+            {/* Botón de carga */}
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-gray-600 mb-4">
+                Cargue todos los archivos necesarios para evaluar su envío
+              </p>
+              <label className="inline-block px-6 py-3 text-white rounded hover:opacity-90 cursor-pointer" style={{ backgroundColor: FESC_RED }}>
+                <Plus className="w-5 h-5 inline mr-2" />
+                Agregar archivo
+                <input
+                  type="file"
+                  onChange={handleFileUpload}
+                  accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,.tiff,.xlsx,.xls,.csv,.zip,.rar"
+                  className="hidden"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-4">
+                Formatos aceptados: DOC, DOCX, PDF, JPG, PNG, TIFF, XLSX, XLS, CSV, ZIP, RAR (máx. 20 MB por archivo)
+              </p>
+            </div>
+
+            {/* Lista de archivos */}
+            {formData.archivos.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold" style={{ color: FESC_GRAY }}>
+                  Archivos cargados ({formData.archivos.length})
+                </h3>
+                {formData.archivos.map((archivo, index) => (
+                  <div key={archivo.id || index} className="flex items-start gap-3 p-4 border border-gray-200 rounded bg-white">
+                    <FileText className="w-10 h-10 flex-shrink-0" style={{ color: FESC_RED }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">
+                        {archivo.nombre}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {(archivo.tamano / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                      {archivo.tipo && (
+                        <p className="text-sm mt-1 font-medium" style={{ color: FESC_RED }}>
+                          Tipo: {archivo.tipo}
+                        </p>
+                      )}
+                      {!archivo.tipo && (
+                        <p className="text-sm mt-1 text-yellow-700">
+                          ⚠️ Debe seleccionar el tipo de archivo
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {!archivo.tipo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempFile({ nombre: archivo.nombre, tamano: archivo.tamano });
+                            removeFile(archivo, index);
+                            setShowFileTypeDialog(true);
+                          }}
+                          className="text-xs px-3 py-1 border rounded hover:bg-gray-50 whitespace-nowrap"
+                          style={{ borderColor: FESC_RED, color: FESC_RED }}
+                        >
+                          Seleccionar tipo
+                        </button>
+                      )}
                       <button
-                        onClick={handleAddFile}
-                        className="px-4 py-2 text-sm text-white rounded hover:opacity-90"
-                        style={{ backgroundColor: FESC_RED }}
+                        type="button"
+                        onClick={() => removeFile(archivo, index)}
+                        className="p-2 hover:bg-red-50 rounded"
+                        title="Eliminar archivo"
                       >
-                        Cargar archivo
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowFileDialog(false);
-                          setNewFile({ name: '', fileType: 'article' });
-                        }}
-                        className="px-4 py-2 text-sm border rounded hover:bg-white"
-                        style={{ color: FESC_RED, borderColor: FESC_RED }}
-                      >
-                        Cancelar carga
+                        <Trash2 className="w-5 h-5 text-red-600" />
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          {/* STEP 4: Colaboradores */}
-          {currentStep === 4 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl mb-2" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Colaboradores/as
-                </h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  Añada los detalles de todos los autores/as del envío. Añada un contacto principal para nuestra correspondencia editorial relativa al envío. Los detalles de todos los editores/as registrados/as deberán ser incluidos como tal.
+            {formData.archivos.length === 0 && (
+              <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded">
+                <p className="text-gray-500">No se han cargado archivos aún</p>
+                <p className="text-sm text-gray-400 mt-1">Debe cargar al menos el manuscrito principal</p>
+              </div>
+            )}
+
+            {formData.archivos.some(a => !a.tipo) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Atención:</strong> Todos los archivos deben tener un tipo asignado antes de continuar.
                 </p>
               </div>
+            )}
 
-              {/* Lista de colaboradores */}
-              {submissionData.colaboradores.length > 0 && (
-                <div className="space-y-3 mb-6">
-                  {submissionData.colaboradores.map((collab) => (
-                    <div
-                      key={collab.id}
-                      className="border border-gray-300 rounded p-4 flex items-start justify-between bg-gray-50"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium" style={{ color: FESC_GRAY }}>
-                            {collab.nombre} {collab.apellidos}
-                          </span>
-                          {collab.isPrincipal && (
-                            <span
-                              className="text-xs px-2 py-0.5 rounded"
-                              style={{ backgroundColor: FESC_RED, color: 'white' }}
-                            >
-                              Principal
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-600">{collab.email}</div>
-                        {collab.afiliacion && (
-                          <div className="text-xs text-gray-500 mt-1">{collab.afiliacion}</div>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                          style={{ color: FESC_RED, borderColor: FESC_RED }}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleRemoveCollaborator(collab.id)}
-                          className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                          style={{ color: FESC_RED, borderColor: FESC_RED }}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Botón añadir colaborador */}
-              {!showCollaboratorDialog ? (
-                <>
+            {/* File Type Dialog */}
+            {showFileTypeDialog && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                  <h3 className="text-xl font-semibold mb-4" style={{ color: FESC_GRAY }}>
+                    ¿Qué tipo de archivo es?
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Seleccione la categoría que mejor describa este archivo.
+                  </p>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {[
+                      'Texto del artículo',
+                      'Figura/Imagen',
+                      'Tabla suplementaria',
+                      'Material suplementario',
+                      'Conjunto de datos',
+                      'Instrumento de investigación',
+                      'Materiales de investigación',
+                      'Resultados de la investigación',
+                      'Transcripciones',
+                      'Análisis de datos',
+                      'Declaración de conflictos de interés',
+                      'Carta de presentación',
+                      'Permisos y consentimientos',
+                      'Otro'
+                    ].map((tipo) => (
+                      <button
+                        key={tipo}
+                        onClick={() => handleFileTypeSelect(tipo)}
+                        className="w-full text-left px-4 py-3 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                      >
+                        {tipo}
+                      </button>
+                    ))}
+                  </div>
                   <button
-                    onClick={() => setShowCollaboratorDialog(true)}
-                    className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
-                    style={{ color: FESC_RED, borderColor: FESC_RED }}
+                    onClick={() => {
+                      setShowFileTypeDialog(false);
+                      setTempFile(null);
+                    }}
+                    className="w-full mt-4 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
                   >
-                    Añadir colaborador/a
+                    Cancelar
                   </button>
-                  <div className="text-sm mt-2" style={{ color: FESC_GRAY }}>
-                    <p className="mb-2">o</p>
-                    <button className="hover:underline" style={{ color: FESC_RED }}>
-                      Preasignar un usuario
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Colaboradores/as */}
+        {currentStep === 4 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Colaboradores/as
+            </h2>
+            <p className="text-sm text-gray-600">
+              Añada los detalles de todos los colaboradores/as de este envío. Los colaboradores/as que añada aquí recibirán un correo electrónico de confirmación del envío, así como una copia de todas las decisiones editoriales registradas relacionadas con este envío.
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded p-4">
+              <p className="text-sm text-gray-700">
+                Si un colaborador/a no quiere ser contactado por correo electrónico, ya sea porque quiere permanecer anónimo o porque no tiene una cuenta de correo, no introduzca una dirección de correo electrónico falsa. Puede añadir información sobre este colaborador/a en un mensaje para el editor/a en el último paso del proceso de envío.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold" style={{ color: FESC_GRAY }}>
+                Lista de Colaboradores/as
+              </h3>
+              <button
+                onClick={() => setShowAuthorDialog(true)}
+                className="px-4 py-2 text-white rounded hover:opacity-90 flex items-center gap-2"
+                style={{ backgroundColor: FESC_RED }}
+              >
+                <Plus className="w-5 h-5" />
+                Añadir colaborador/a
+              </button>
+            </div>
+
+            {formData.autores.length === 0 ? (
+              <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded">
+                <p className="text-gray-500">Ningún elemento encontrado.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {formData.autores.map((autor, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded">
+                    <div className="flex-1">
+                      <p className="font-semibold" style={{ color: FESC_GRAY }}>
+                        {autor.nombre} {autor.apellidos}
+                        {autor.esCorresponsal && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: `${FESC_RED}20`, color: FESC_RED }}>
+                            Corresponsal
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600">{autor.email}</p>
+                      <p className="text-sm text-gray-500">{autor.afiliacion} - {autor.pais}</p>
+                    </div>
+                    <button
+                      onClick={() => removeAuthor(index)}
+                      className="p-2 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-5 h-5 text-red-600" />
                     </button>
                   </div>
-                </>
-              ) : (
-                <div className="border border-gray-300 rounded p-6 bg-gray-50">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                      Añadir colaborador/a
-                    </h3>
-                    <div className="flex gap-2">
-                      <button
-                        className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                        style={{ color: FESC_RED, borderColor: FESC_RED }}
-                      >
-                        Buscar
-                      </button>
-                      <button
-                        className="px-3 py-1.5 text-sm text-white rounded"
-                        style={{ backgroundColor: FESC_RED }}
-                      >
-                        Preasignar
-                      </button>
-                      <button
-                        onClick={handleAddCollaborator}
-                        className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                        style={{ color: FESC_RED, borderColor: FESC_RED }}
-                      >
-                        Añadir colaborador/a
-                      </button>
-                    </div>
-                  </div>
+                ))}
+              </div>
+            )}
 
-                  <div className="text-sm mb-4 text-gray-600">
-                    Ningún resultado coincidió.
-                  </div>
-
+            {/* Author Dialog */}
+            {showAuthorDialog && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                  <h3 className="text-xl font-semibold mb-4" style={{ color: FESC_GRAY }}>
+                    Añadir colaborador/a
+                  </h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                          Nombre <span style={{ color: FESC_RED }}>*</span>
+                        <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                          Nombre *
                         </label>
                         <input
                           type="text"
-                          value={newCollaborator.nombre}
-                          onChange={(e) => setNewCollaborator({ ...newCollaborator, nombre: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                          onFocus={(e) => {
-                            e.currentTarget.style.borderColor = FESC_RED;
-                            e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                          }}
-                          onBlur={(e) => {
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                            e.currentTarget.style.boxShadow = 'none';
-                          }}
+                          value={currentAuthor.nombre}
+                          onChange={(e) => setCurrentAuthor({ ...currentAuthor, nombre: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                          onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                          Apellidos
+                        <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                          Apellidos *
                         </label>
                         <input
                           type="text"
-                          value={newCollaborator.apellidos}
-                          onChange={(e) => setNewCollaborator({ ...newCollaborator, apellidos: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                          onFocus={(e) => {
-                            e.currentTarget.style.borderColor = FESC_RED;
-                            e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                          }}
-                          onBlur={(e) => {
-                            e.currentTarget.style.borderColor = '#d1d5db';
-                            e.currentTarget.style.boxShadow = 'none';
-                          }}
+                          value={currentAuthor.apellidos}
+                          onChange={(e) => setCurrentAuthor({ ...currentAuthor, apellidos: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                          onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                         />
                       </div>
                     </div>
-
                     <div>
-                      <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                        Correo electrónico <span style={{ color: FESC_RED }}>*</span>
+                      <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                        Email *
                       </label>
                       <input
                         type="email"
-                        value={newCollaborator.email}
-                        onChange={(e) => setNewCollaborator({ ...newCollaborator, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = FESC_RED;
-                          e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
+                        value={currentAuthor.email}
+                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, email: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                        onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                        Afiliación
+                      <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                        Afiliación *
+                      </label>
+                      <p className="text-xs text-gray-500 mb-1">
+                        La afiliación es la institución u organización a la que pertenece el colaborador/a (ej: Universidad Nacional de Colombia, Instituto de Investigaciones Científicas)
+                      </p>
+                      <input
+                        type="text"
+                        value={currentAuthor.afiliacion}
+                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, afiliacion: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                        placeholder="Ej: Fundación de Estudios Superiores Comfanorte"
+                        onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                        País *
                       </label>
                       <input
                         type="text"
-                        value={newCollaborator.afiliacion}
-                        onChange={(e) => setNewCollaborator({ ...newCollaborator, afiliacion: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = FESC_RED;
-                          e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
+                        value={currentAuthor.pais}
+                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, pais: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                        placeholder="Ej: Colombia"
+                        onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                       />
                     </div>
-
-                    <div>
-                      <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                        País
-                      </label>
-                      <select
-                        value={newCollaborator.pais}
-                        onChange={(e) => setNewCollaborator({ ...newCollaborator, pais: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none"
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = FESC_RED;
-                          e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = '#d1d5db';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }}
-                      >
-                        <option value="">Seleccione un país</option>
-                        <option value="CO">Colombia</option>
-                        <option value="AR">Argentina</option>
-                        <option value="BR">Brasil</option>
-                        <option value="CL">Chile</option>
-                        <option value="MX">México</option>
-                      </select>
-                    </div>
-
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        id="is-principal"
-                        checked={newCollaborator.isPrincipal}
-                        onChange={(e) => setNewCollaborator({ ...newCollaborator, isPrincipal: e.target.checked })}
-                        className="w-4 h-4 rounded"
+                        id="corresponsal"
+                        checked={currentAuthor.esCorresponsal}
+                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, esCorresponsal: e.target.checked })}
                         style={{ accentColor: FESC_RED }}
                       />
-                      <label htmlFor="is-principal" className="text-sm" style={{ color: FESC_GRAY }}>
-                        Contacto principal para correspondencia editorial
+                      <label htmlFor="corresponsal" className="text-sm" style={{ color: FESC_GRAY }}>
+                        Autor corresponsal
                       </label>
                     </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                      <p className="text-xs text-gray-700">
+                        <strong>Nota:</strong> El autor corresponsal es la persona principal de contacto para el artículo y recibirá todas las comunicaciones editoriales.
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="flex gap-3 mt-6">
-                    <button
-                      onClick={handleAddCollaborator}
-                      className="px-4 py-2 text-sm text-white rounded hover:opacity-90"
-                      style={{ backgroundColor: FESC_RED }}
-                    >
-                      Guardar
-                    </button>
+                  <div className="flex justify-end gap-3 mt-6">
                     <button
                       onClick={() => {
-                        setShowCollaboratorDialog(false);
-                        setNewCollaborator({
-                          id: '',
+                        setShowAuthorDialog(false);
+                        setCurrentAuthor({
                           nombre: '',
                           apellidos: '',
                           email: '',
-                          pais: '',
                           afiliacion: '',
-                          orcid: '',
-                          isPrincipal: false,
+                          pais: '',
+                          esCorresponsal: false,
                         });
                       }}
-                      className="px-4 py-2 text-sm border rounded hover:bg-white"
-                      style={{ color: FESC_RED, borderColor: FESC_RED }}
+                      className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
                     >
                       Cancelar
                     </button>
+                    <button
+                      onClick={handleAddAuthor}
+                      className="px-4 py-2 text-white rounded hover:opacity-90"
+                      style={{ backgroundColor: FESC_RED }}
+                    >
+                      Agregar
+                    </button>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 5: Para editores/as */}
+        {currentStep === 5 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Para los editores/as
+            </h2>
+            <p className="text-sm text-gray-600">
+              Proporcione los detalles siguientes para ayudar a nuestro equipo editorial a gestionar su envío.
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded p-4">
+              <p className="text-sm text-gray-700">
+                Cuando introduzca los metadatos, facilite las entradas que considere más útiles para la persona que gestione su envío. Esta información puede modificarse antes de la publicación.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
+                Comentarios para el editor/a
+              </label>
+              <p className="text-xs text-gray-600 mb-2">
+                Añada la información que considere que nuestro personal editorial debería conocer en el momento de evaluar su envío.
+              </p>
+              <textarea
+                value={formData.comentariosEditor}
+                onChange={(e) => setFormData({ ...formData, comentariosEditor: e.target.value })}
+                rows={6}
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2"
+                placeholder="Escriba aquí cualquier comentario o aclaración para los editores/as..."
+                style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = FESC_RED;
+                  e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Revisión */}
+        {currentStep === 6 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold" style={{ color: FESC_GRAY }}>
+              Revisar y enviar
+            </h2>
+            <p className="text-sm text-gray-600">
+              Por favor revise toda la información antes de enviar. Una vez enviado, el artículo entrará en el proceso de revisión editorial.
+            </p>
+
+            <div className="space-y-4">
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Idioma</h3>
+                <p className="text-gray-700">{formData.idioma}</p>
+              </div>
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Título</h3>
+                <p className="text-gray-700">{formData.titulo}</p>
+              </div>
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Sección</h3>
+                <p className="text-gray-700">{formData.seccion}</p>
+              </div>
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Palabras Clave</h3>
+                <div className="flex flex-wrap gap-2">
+                  {formData.palabrasClave.map((keyword, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 rounded-full text-sm"
+                      style={{ backgroundColor: `${FESC_RED}20`, color: FESC_RED }}
+                    >
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Resumen</h3>
+                <p className="text-gray-700 whitespace-pre-wrap">{formData.resumen}</p>
+              </div>
+
+              {formData.referencias && (
+                <div className="border border-gray-200 rounded p-4">
+                  <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Referencias</h3>
+                  <p className="text-gray-700 whitespace-pre-wrap text-sm">{formData.referencias}</p>
+                </div>
+              )}
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-3" style={{ color: FESC_GRAY }}>
+                  Archivos ({formData.archivos.length})
+                </h3>
+                {formData.archivos.length > 0 ? (
+                  <div className="space-y-2">
+                    {formData.archivos.map((archivo, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded">
+                        <FileText className="w-6 h-6 flex-shrink-0" style={{ color: FESC_RED }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-gray-900 font-medium truncate">{archivo.nombre}</p>
+                          <p className="text-sm text-gray-600">
+                            {archivo.tipo} • {(archivo.tamano / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">Sin archivos</p>
+                )}
+              </div>
+
+              <div className="border border-gray-200 rounded p-4">
+                <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Colaboradores/as ({formData.autores.length})</h3>
+                <div className="space-y-2">
+                  {formData.autores.map((autor, index) => (
+                    <div key={index} className="text-gray-700">
+                      <p className="font-medium">
+                        {autor.nombre} {autor.apellidos}
+                        {autor.esCorresponsal && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: `${FESC_RED}20`, color: FESC_RED }}>
+                            Corresponsal
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600">{autor.email}</p>
+                      <p className="text-sm text-gray-500">{autor.afiliacion} - {autor.pais}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {formData.comentariosEditor && (
+                <div className="border border-gray-200 rounded p-4">
+                  <h3 className="font-semibold mb-2" style={{ color: FESC_GRAY }}>Comentarios para el editor/a</h3>
+                  <p className="text-gray-700 whitespace-pre-wrap">{formData.comentariosEditor}</p>
                 </div>
               )}
             </div>
-          )}
 
-          {/* STEP 5: Para los editores */}
-          {currentStep === 5 && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl mb-2" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Para los editores/as
-                </h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  Proponga los detalles importantes que el autor personal del editor/a debe comentar en un manuscrito del producto o en otros comentarios que sirvan de ayuda para nuestros editores.
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="comentarios-editor" className="block text-sm mb-2" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                  Comentarios para el editor/a
-                </label>
-                <div className="mb-2 flex gap-2">
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    <strong>B</strong>
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    <em>I</em>
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    X₂
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    X²
-                  </button>
-                  <button className="p-1.5 border border-gray-300 rounded hover:bg-gray-50">
-                    🔗
-                  </button>
-                </div>
-                <textarea
-                  id="comentarios-editor"
-                  value={submissionData.comentariosEditor}
-                  onChange={(e) => setSubmissionData({ ...submissionData, comentariosEditor: e.target.value })}
-                  rows={10}
-                  placeholder="Cuando introduzca un comentario o suba un archivo, puede mantenerse al tanto del editorial mientras que el artículo siga un proceso en las distintas etapas del producto. Esta información puede modificar otras etapas en la publicación final."
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none resize-none"
-                  style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = FESC_RED;
-                    e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
+            <div className="bg-green-50 border border-green-200 rounded p-4">
+              <p className="text-sm text-green-800">
+                <strong>¿Listo para enviar?</strong> Al hacer clic en "Enviar Artículo", su trabajo será enviado al equipo editorial de Mundo FESC para su revisión. Recibirá un correo de confirmación con el número de referencia de su envío.
+              </p>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* STEP 6: Revisión */}
-          {currentStep === 6 && (
-            <div className="space-y-6">
-              <div className="bg-yellow-50 border border-yellow-200 rounded p-4 mb-6">
-                <p className="text-sm" style={{ color: FESC_WINE }}>
-                  Hay una o más plegarias que deberá rellenar en la etapa anterior para enviar el envío. Revise la siguiente información y luego las pestañas solicitadas.
-                </p>
-              </div>
+        {/* Navigation Buttons */}
+        <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
+          <button
+            onClick={handlePrev}
+            disabled={currentStep === 1}
+            className="px-6 py-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Anterior
+          </button>
 
-              <div>
-                <h2 className="text-xl mb-4" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-                  Revisar y enviar
-                </h2>
-                <p className="text-sm text-gray-600 mb-6">
-                  Revise la información que ha introducido antes de finalizar su envío. Puede modificar esta información a lo largo de las revisión anterior ahora antes de enviar a la sección editorial para evaluarla. Naya, mientras en su etapa debe ser modificable mediante el envío finalizando su punto antes de publicar.
-                </p>
-              </div>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSaveDraft}
+              disabled={saving}
+              className="px-6 py-2 border rounded hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
+              style={{ borderColor: FESC_RED, color: FESC_RED }}
+            >
+              <Save className="w-5 h-5" />
+              {saving ? 'Guardando...' : 'Guardar Borrador'}
+            </button>
 
-              {/* Detalles (Inglés) */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Detalles (Inglés)
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(2)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4 space-y-3">
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Título</div>
-                    <div className="text-sm text-gray-700">{submissionData.titulo || 'Ninguno proporcionado'}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Palabras clave</div>
-                    <div className="text-sm text-gray-700">{submissionData.palabrasClave || 'Ninguno proporcionado'}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Resumen</div>
-                    <div className="text-sm text-gray-700">{submissionData.resumen || 'Ninguno proporcionado'}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalles (Español) */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Detalles (Español)
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(2)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4 space-y-3">
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Título</div>
-                    <div className="text-sm text-gray-700">{submissionData.titulo}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Palabras clave</div>
-                    <div className="text-sm text-gray-700">{submissionData.palabrasClave}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Resumen</div>
-                    <div className="text-sm text-gray-700">{submissionData.resumen}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Referencias</div>
-                    <div className="text-sm text-gray-700 whitespace-pre-wrap">{submissionData.referencias}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Archivos */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Archivos
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(3)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4">
-                  {submissionData.files.length > 0 ? (
-                    <ul className="space-y-2">
-                      {submissionData.files.map((file) => (
-                        <li key={file.id} className="flex items-center gap-2 text-sm text-gray-700">
-                          <FileText size={16} style={{ color: FESC_RED }} />
-                          {file.name}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="bg-red-50 border border-red-200 rounded p-3 flex items-start gap-2">
-                      <AlertTriangle size={18} style={{ color: FESC_RED }} />
-                      <span className="text-sm" style={{ color: FESC_RED }}>
-                        Debe cargar al menos un archivo tipo texto del artículo.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Colaboradores/as */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Colaboradores/as
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(4)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4">
-                  {submissionData.colaboradores.length > 0 ? (
-                    <ul className="space-y-2">
-                      {submissionData.colaboradores.map((collab) => (
-                        <li key={collab.id} className="text-sm text-gray-700">
-                          {collab.nombre} {collab.apellidos}
-                          {collab.isPrincipal && (
-                            <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: FESC_RED, color: 'white' }}>
-                              Principal
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="bg-red-50 border border-red-200 rounded p-3 flex items-start gap-2">
-                      <AlertTriangle size={18} style={{ color: FESC_RED }} />
-                      <span className="text-sm" style={{ color: FESC_RED }}>
-                        No se han añadido colaboradores/as para este envío.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Para los editores/as (Inglés) */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Para los editores/as (Inglés)
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(5)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4">
-                  <div className="text-sm text-gray-700">Ninguno</div>
-                </div>
-              </div>
-
-              {/* Para los editores/as (Español) */}
-              <div className="border border-gray-300 rounded">
-                <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-300">
-                  <h3 className="text-base" style={{ color: FESC_GRAY, fontWeight: '600' }}>
-                    Para los editores/as (Español)
-                  </h3>
-                  <button
-                    onClick={() => setCurrentStep(5)}
-                    className="px-3 py-1.5 text-sm border rounded hover:bg-white"
-                    style={{ color: FESC_RED, borderColor: FESC_RED, backgroundColor: 'white' }}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="p-4">
-                  <div>
-                    <div className="text-sm font-medium mb-1" style={{ color: FESC_GRAY }}>Comentarios para el editor/a</div>
-                    <div className="text-sm text-gray-700">{submissionData.comentariosEditor || 'Ninguno'}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Navigation Buttons */}
-          <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
-            <div className="text-sm text-gray-500">
-              Último guardado hace {Math.floor(Math.random() * 5) + 1} {Math.random() > 0.5 ? 'minutos' : 'segundos'}
-            </div>
-            <div className="flex gap-3">
-              {currentStep > 1 && (
-                <button
-                  onClick={handlePreviousStep}
-                  className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
-                  style={{ color: FESC_RED, borderColor: FESC_RED }}
-                >
-                  Atrás
-                </button>
-              )}
+            {currentStep < STEPS.length ? (
               <button
-                onClick={handleSaveForLater}
-                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50 text-gray-600"
+                onClick={handleNext}
+                disabled={!canProceed()}
+                className="px-6 py-2 text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: FESC_RED }}
               >
-                Guardar para más tarde
+                Siguiente
               </button>
-              {currentStep < STEPS.length ? (
-                <button
-                  onClick={handleNextStep}
-                  disabled={
-                    (currentStep === 1 && !canProceedFromStep1) ||
-                    (currentStep === 2 && !canProceedFromStep2) ||
-                    (currentStep === 3 && !canProceedFromStep3)
-                  }
-                  className="px-4 py-2 text-sm text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                  style={{ backgroundColor: FESC_RED }}
-                >
-                  Continuar
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!canProceedFromStep3 || submissionData.colaboradores.length === 0}
-                  className="px-4 py-2 text-sm text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                  style={{ backgroundColor: FESC_RED }}
-                >
-                  Enviar
-                </button>
-              )}
-            </div>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={saving}
+                className="px-6 py-2 text-white rounded hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: FESC_RED }}
+              >
+                {saving ? 'Enviando...' : 'Enviar Artículo'}
+              </button>
+            )}
           </div>
         </div>
       </div>

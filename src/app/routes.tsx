@@ -1,7 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { Login } from './components/login';
 import { Register } from './components/register';
-import { SubmissionWizardNew } from './components/submission-wizard-new';
+import { SubmissionWizardNew } from './components/submission-wizard';
 import { SubmissionSuccess } from './components/submission-success';
 import { SubmissionsManagement } from './components/submissions-management';
 import { SubmissionDetailNew } from './components/submission-detail-new';
