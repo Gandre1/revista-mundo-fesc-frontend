@@ -8,6 +8,18 @@ export interface SubmissionPayload {
   idioma: string;
 }
 
+export interface AuthorPayload {
+  submission_id: string;
+  nombre: string;
+  apellidos: string;
+  email: string;
+  afiliacion?: string;
+  pais?: string;
+  orcid?: string;
+  es_corresponsal?: boolean;
+  orden?: number;
+}
+
 export const submissionService = {
 
   createSubmission: async (payload: SubmissionPayload) => {
@@ -52,7 +64,24 @@ export const submissionService = {
       method: 'DELETE',
     });
   },
-  
+
+  async addAuthor(data: AuthorPayload) {
+    return apiFetch('/authors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getAuthors(submissionId: string) {
+    return apiFetch(`/authors/submission/${submissionId}`);
+  },
+
+  async deleteAuthor(authorId: number) {
+    return apiFetch(`/authors/${authorId}`, {
+      method: 'DELETE',
+    });
+  },
+
   finalizeSubmission: async (id: string) => {
     return apiFetch<{ message: string; submission: any }>(`/submissions/${id}/finalize`, {
       method: 'PATCH',

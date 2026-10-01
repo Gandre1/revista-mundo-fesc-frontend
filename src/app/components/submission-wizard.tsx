@@ -66,12 +66,13 @@ export function SubmissionWizardNew() {
   const [showAuthorDialog, setShowAuthorDialog] = useState(false);
   const [showFileTypeDialog, setShowFileTypeDialog] = useState(false);
   const [tempFile, setTempFile] = useState<{ nombre: string; tamano: number } | null>(null);
-  const [currentAuthor, setCurrentAuthor] = useState<Author>({
+  const [currentAuthor, setCurrentAuthor] = useState({
     nombre: '',
     apellidos: '',
     email: '',
     afiliacion: '',
     pais: '',
+    orcid: '',
     esCorresponsal: false,
   });
 
@@ -106,8 +107,28 @@ export function SubmissionWizardNew() {
     }
   }, []);
 
+  useEffect(() => {
+    const fetchAuthors = async () => {
+      if (submissionId && currentStep === 4) {
+        try {
+          const response: any = await submissionService.getAuthors(String(submissionId));
+          if (response && response.authors) {
+            setFormData((prev: any) => ({
+              ...prev,
+              autores: response.authors,
+            }));
+          }
+        } catch (error) {
+          console.error('Error al obtener la lista de colaboradores:', error);
+        }
+      }
+    };
+
+    fetchAuthors();
+  }, [currentStep, submissionId]);
+
   // Guardar en la Base de Datos
-  const saveToBackend = async () => {
+  const saveToBackend = async (_mode?: string) => {
     console.log('>>> [BACKEND] Sincronizando con MySQL...');
     setSaving(true);
 
@@ -124,23 +145,27 @@ export function SubmissionWizardNew() {
         idioma: formData.idioma || 'es',
       };
 
-      let response;
+      let response: any;
 
       // Si ya tenemos un ID, actualizamos (PUT)
       if (submissionId) {
-        response = await submissionService.updateSubmission(submissionId, payload);
+        response = await submissionService.updateSubmission(String(submissionId), payload);
       } else {
         // Si no tenemos ID, creamos (POST)
         response = await submissionService.createSubmission(payload);
-        
+
         // Si el backend nos responde con el nuevo ID, lo guardamos en el estado
-        if (response && response.submissionId) {
-          setSubmissionId(response.submissionId);
+        const createdId = response?.submissionId ?? response?.id;
+        if (createdId !== undefined && createdId !== null) {
+          const numericId = Number(createdId);
+          if (!Number.isNaN(numericId)) {
+            setSubmissionId(numericId);
+          }
         }
       }
 
       // Guarda en localStorage la combinación de datos + ID
-      const currentId = submissionId || response?.submissionId;
+      const currentId = submissionId ?? response?.submissionId ?? response?.id;
       localStorage.setItem(
         'submission_draft',
         JSON.stringify({
@@ -211,30 +236,89 @@ export function SubmissionWizardNew() {
     });
   };
 
-  const handleAddAuthor = () => {
-    if (currentAuthor.nombre && currentAuthor.email) {
-      setFormData({
-        ...formData,
-        autores: [...formData.autores, { ...currentAuthor }]
+  const handleAddAuthor = async () => {
+    if (!currentAuthor.nombre || !currentAuthor.apellidos || !currentAuthor.email) {
+      alert('Nombre, apellidos y email son requeridos.');
+      return;
+    }
+
+    // Asegurarnos de tener el ID del envío borrador
+    if (!submissionId) {
+      alert('No se ha encontrado el ID de la postulación actual.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      
+      // Hacemos el llamado al servicio
+      const response: any = await submissionService.addAuthor({
+        submission_id: String(submissionId),
+        nombre: currentAuthor.nombre,
+        apellidos: currentAuthor.apellidos,
+        email: currentAuthor.email,
+        afiliacion: currentAuthor.afiliacion,
+        pais: currentAuthor.pais,
+        orcid: currentAuthor.orcid,
+        es_corresponsal: currentAuthor.esCorresponsal,
+        orden: formData.autores.length + 1,
       });
+
+      const newAuthor = response?.author || {
+        ...currentAuthor,
+        id: response?.id,
+      };
+
+      setFormData((prev: any) => ({
+        ...prev,
+        autores: [...prev.autores, newAuthor],
+      }));
+
       setCurrentAuthor({
         nombre: '',
         apellidos: '',
         email: '',
         afiliacion: '',
         pais: '',
+        orcid: '',
         esCorresponsal: false,
       });
       setShowAuthorDialog(false);
+    } catch (error) {
+      console.error('Error al guardar el colaborador:', error);
+      alert('Error al guardar el colaborador en la base de datos.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const removeAuthor = (index: number) => {
-    setFormData({
-      ...formData,
-      autores: formData.autores.filter((_, i) => i !== index)
-    });
-  };
+const removeAuthor = async (autor: any, index: number) => {
+  if (!window.confirm('¿Está seguro de eliminar este colaborador?')) return;
+
+  try {
+    setSaving(true);
+
+    if (autor && autor.id) {
+      const authorId = typeof autor.id === 'string' ? parseInt(autor.id, 10) : autor.id;
+      await submissionService.deleteAuthor(authorId);
+    }
+
+    setFormData((prev: any) => ({
+      ...prev,
+      autores: prev.autores.filter((item: any, i: number) => {
+        if (autor && autor.id) {
+          return String(item.id) !== String(autor.id);
+        }
+        return i !== index;
+      }),
+    }));
+  } catch (error: any) {
+    console.error('Error al eliminar el colaborador:', error);
+    alert('No se pudo eliminar el colaborador.');
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipoDocumento: string = 'manuscrito') => {
     const file = event.target.files?.[0];
@@ -249,7 +333,7 @@ export function SubmissionWizardNew() {
       setSaving(true);
       console.log('>>> [FRONTEND] Subiendo archivo real a MySQL...');
       
-      const response = await submissionService.uploadFile(submissionId, file, tipoDocumento);
+      const response = await submissionService.uploadFile(String(submissionId), file, tipoDocumento);
       console.log('>>> [BACKEND] Respuesta de subida:', response);
 
       const newFile = {
@@ -275,9 +359,11 @@ export function SubmissionWizardNew() {
 
   const fetchUploadedFiles = async (id: number | string) => {
     try {
-      const data = await submissionService.getSubmissionFiles(String(id));
-      if (data && data.files) {
-        const formattedFiles = data.files.map((f: any) => ({
+      const data: any = await submissionService.getSubmissionFiles(String(id));
+      const files = Array.isArray(data?.files) ? data.files : [];
+
+      if (files.length > 0) {
+        const formattedFiles = files.map((f: any) => ({
           id: f.id,
           nombre: f.nombre_original,
           tamano: f.tamano,
@@ -962,6 +1048,7 @@ export function SubmissionWizardNew() {
                 Lista de Colaboradores/as
               </h3>
               <button
+                type="button"
                 onClick={() => setShowAuthorDialog(true)}
                 className="px-4 py-2 text-white rounded hover:opacity-90 flex items-center gap-2"
                 style={{ backgroundColor: FESC_RED }}
@@ -977,23 +1064,32 @@ export function SubmissionWizardNew() {
               </div>
             ) : (
               <div className="space-y-3">
-                {formData.autores.map((autor, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded">
+                {formData.autores.map((autor: any, index: number) => (
+                  <div key={autor.id || index} className="flex items-center justify-between p-4 border border-gray-200 rounded">
                     <div className="flex-1">
                       <p className="font-semibold" style={{ color: FESC_GRAY }}>
                         {autor.nombre} {autor.apellidos}
-                        {autor.esCorresponsal && (
+                        {(autor.esCorresponsal || autor.es_corresponsal) && (
                           <span className="ml-2 text-xs px-2 py-0.5 rounded" style={{ backgroundColor: `${FESC_RED}20`, color: FESC_RED }}>
                             Corresponsal
                           </span>
                         )}
                       </p>
                       <p className="text-sm text-gray-600">{autor.email}</p>
-                      <p className="text-sm text-gray-500">{autor.afiliacion} - {autor.pais}</p>
+                      <p className="text-sm text-gray-500">
+                        {autor.afiliacion} {autor.pais ? `- ${autor.pais}` : ''}
+                      </p>
+                      {autor.orcid && (
+                        <p className="text-xs text-green-700 mt-1 font-mono">
+                          ORCID: {autor.orcid}
+                        </p>
+                      )}
                     </div>
                     <button
-                      onClick={() => removeAuthor(index)}
+                      type="button"
+                      onClick={() => removeAuthor(autor, index)}
                       className="p-2 hover:bg-red-50 rounded"
+                      title="Eliminar colaborador"
                     >
                       <Trash2 className="w-5 h-5 text-red-600" />
                     </button>
@@ -1038,6 +1134,7 @@ export function SubmissionWizardNew() {
                         />
                       </div>
                     </div>
+
                     <div>
                       <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
                         Email *
@@ -1051,38 +1148,54 @@ export function SubmissionWizardNew() {
                         onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                       />
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                          Afiliación
+                        </label>
+                        <input
+                          type="text"
+                          value={currentAuthor.afiliacion}
+                          onChange={(e) => setCurrentAuthor({ ...currentAuthor, afiliacion: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                          placeholder="Ej: FESC"
+                          onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
+                          País
+                        </label>
+                        <input
+                          type="text"
+                          value={currentAuthor.pais}
+                          onChange={(e) => setCurrentAuthor({ ...currentAuthor, pais: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
+                          placeholder="Ej: Colombia"
+                          onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
+                          onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
-                        Afiliación *
+                        ORCID iD
                       </label>
-                      <p className="text-xs text-gray-500 mb-1">
-                        La afiliación es la institución u organización a la que pertenece el colaborador/a (ej: Universidad Nacional de Colombia, Instituto de Investigaciones Científicas)
-                      </p>
                       <input
                         type="text"
-                        value={currentAuthor.afiliacion}
-                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, afiliacion: e.target.value })}
+                        value={currentAuthor.orcid}
+                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, orcid: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
-                        placeholder="Ej: Fundación de Estudios Superiores Comfanorte"
+                        placeholder="Ej: 0000-0002-1825-0097"
                         onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
                         onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: FESC_GRAY }}>
-                        País *
-                      </label>
-                      <input
-                        type="text"
-                        value={currentAuthor.pais}
-                        onChange={(e) => setCurrentAuthor({ ...currentAuthor, pais: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1"
-                        placeholder="Ej: Colombia"
-                        onFocus={(e) => e.currentTarget.style.borderColor = FESC_RED}
-                        onBlur={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center gap-2 pt-2">
                       <input
                         type="checkbox"
                         id="corresponsal"
@@ -1094,14 +1207,17 @@ export function SubmissionWizardNew() {
                         Autor corresponsal
                       </label>
                     </div>
+
                     <div className="bg-blue-50 border border-blue-200 rounded p-3">
                       <p className="text-xs text-gray-700">
                         <strong>Nota:</strong> El autor corresponsal es la persona principal de contacto para el artículo y recibirá todas las comunicaciones editoriales.
                       </p>
                     </div>
                   </div>
+
                   <div className="flex justify-end gap-3 mt-6">
                     <button
+                      type="button"
                       onClick={() => {
                         setShowAuthorDialog(false);
                         setCurrentAuthor({
@@ -1110,6 +1226,7 @@ export function SubmissionWizardNew() {
                           email: '',
                           afiliacion: '',
                           pais: '',
+                          orcid: '',
                           esCorresponsal: false,
                         });
                       }}
@@ -1118,6 +1235,7 @@ export function SubmissionWizardNew() {
                       Cancelar
                     </button>
                     <button
+                      type="button"
                       onClick={handleAddAuthor}
                       className="px-4 py-2 text-white rounded hover:opacity-90"
                       style={{ backgroundColor: FESC_RED }}
