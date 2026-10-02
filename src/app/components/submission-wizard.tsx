@@ -31,7 +31,7 @@ export function SubmissionWizardNew() {
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
-  const [submissionId, setSubmissionId] = useState<number | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   // Redirigir al login si no hay usuario
   useEffect(() => {
@@ -138,42 +138,41 @@ export function SubmissionWizardNew() {
         : formData.palabrasClave || '';
 
       const payload = {
-        titulo: formData.titulo || '',
+        titulo: formData.titulo || 'Borrador sin título',
         resumen: formData.resumen || '',
         palabras_clave: keywordsString,
         seccion: formData.seccion || 'Artículos de Investigación',
         idioma: formData.idioma || 'es',
+        comentarios_editor: formData.comentariosEditor || '',
+        referencias: formData.referencias || '',
       };
 
       let response: any;
 
-      // Si ya tenemos un ID, actualizamos (PUT)
       if (submissionId) {
         response = await submissionService.updateSubmission(String(submissionId), payload);
       } else {
-        // Si no tenemos ID, creamos (POST)
         response = await submissionService.createSubmission(payload);
 
-        // Si el backend nos responde con el nuevo ID, lo guardamos en el estado
-        const createdId = response?.submissionId ?? response?.id;
-        if (createdId !== undefined && createdId !== null) {
-          const numericId = Number(createdId);
-          if (!Number.isNaN(numericId)) {
-            setSubmissionId(numericId);
-          }
+        const createdId = response?.submissionId || response?.id;
+        if (createdId) {
+          const idString = String(createdId);
+          setSubmissionId(idString);
+          setFormData((prev: any) => ({ ...prev, id: idString }));
         }
       }
 
-      // Guarda en localStorage la combinación de datos + ID
-      const currentId = submissionId ?? response?.submissionId ?? response?.id;
-      localStorage.setItem(
-        'submission_draft',
-        JSON.stringify({
-          formData,
-          submissionId: currentId,
-          updatedAt: new Date().toISOString()
-        })
-      );
+      const currentId = submissionId || response?.submissionId || response?.id;
+      if (currentId) {
+        localStorage.setItem(
+          'submission_draft',
+          JSON.stringify({
+            formData: { ...formData, id: currentId },
+            submissionId: currentId,
+            updatedAt: new Date().toISOString(),
+          })
+        );
+      }
 
       return response;
     } catch (error) {
@@ -292,47 +291,47 @@ export function SubmissionWizardNew() {
     }
   };
 
-const removeAuthor = async (autor: any, index: number) => {
-  if (!window.confirm('¿Está seguro de eliminar este colaborador?')) return;
+  const removeAuthor = async (autor: any, index: number) => {
+    if (!window.confirm('¿Está seguro de eliminar este colaborador?')) return;
 
-  try {
-    setSaving(true);
+    try {
+      setSaving(true);
 
-    if (autor && autor.id) {
-      const authorId = typeof autor.id === 'string' ? parseInt(autor.id, 10) : autor.id;
-      await submissionService.deleteAuthor(authorId);
+      if (autor && autor.id) {
+        const authorId = typeof autor.id === 'string' ? parseInt(autor.id, 10) : autor.id;
+        await submissionService.deleteAuthor(authorId);
+      }
+
+      setFormData((prev: any) => ({
+        ...prev,
+        autores: prev.autores.filter((item: any, i: number) => {
+          if (autor && autor.id) {
+            return String(item.id) !== String(autor.id);
+          }
+          return i !== index;
+        }),
+      }));
+    } catch (error: any) {
+      console.error('Error al eliminar el colaborador:', error);
+      alert('No se pudo eliminar el colaborador.');
+    } finally {
+      setSaving(false);
     }
-
-    setFormData((prev: any) => ({
-      ...prev,
-      autores: prev.autores.filter((item: any, i: number) => {
-        if (autor && autor.id) {
-          return String(item.id) !== String(autor.id);
-        }
-        return i !== index;
-      }),
-    }));
-  } catch (error: any) {
-    console.error('Error al eliminar el colaborador:', error);
-    alert('No se pudo eliminar el colaborador.');
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, tipoDocumento: string = 'manuscrito') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!submissionId) {
-      alert('Primero debes guardar la información básica del artículo.');
+      alert('Primero debes guardar la información básica del artículo en el Paso 1 o 2.');
       return;
     }
 
     try {
       setSaving(true);
       console.log('>>> [FRONTEND] Subiendo archivo real a MySQL...');
-      
+
       const response = await submissionService.uploadFile(String(submissionId), file, tipoDocumento);
       console.log('>>> [BACKEND] Respuesta de subida:', response);
 
@@ -340,7 +339,7 @@ const removeAuthor = async (autor: any, index: number) => {
         id: response.file.id,
         nombre: response.file.nombre_original,
         tamano: response.file.tamano,
-        tipo: response.file.tipo || tipoDocumento,
+        tipo: response.file.tipo || tipoDocumento || 'manuscrito', // Asegurar que tipo NUNCA sea undefined
       };
 
       setFormData((prev) => ({
@@ -425,39 +424,62 @@ const removeAuthor = async (autor: any, index: number) => {
     }
   };
 
-  const handleSubmit = async () => {
-    if (!user) return;
+  const handleFinalize = async () => {
+    const currentId = submissionId || (formData as any).id;
+
+    if (!currentId) {
+      alert('No se encontró un código de envío válido.');
+      return;
+    }
+
+    const confirmSend = window.confirm(
+      '¿Está seguro de enviar su artículo? Una vez enviado, no podrá modificar la información ingresada.'
+    );
+
+    if (!confirmSend) return;
 
     try {
-      await saveToBackend('submitted');
-      storage.clearDraft();
+      setSaving(true);
 
-      if (submissionId) {
-        localStorage.setItem('lastSubmissionId', String(submissionId));
-      }
+      await submissionService.updateSubmission(String(currentId), {
+        titulo: formData.titulo,
+        resumen: formData.resumen,
+        palabras_clave: Array.isArray(formData.palabrasClave) ? formData.palabrasClave.join(', ') : formData.palabrasClave,
+        seccion: formData.seccion,
+        idioma: formData.idioma,
+        comentarios_editor: formData.comentariosEditor,
+        referencias: formData.referencias,
+      });
 
-      alert('¡Envío completado con éxito!');
-      navigate('/submission/success');
-    } catch (error) {
-      alert('Error al enviar el artículo. Por favor revisa la consola.');
+      const response: any = await submissionService.finalizeSubmission(String(currentId));
+
+      // Limpiar borrador local al finalizar exitosamente
+      localStorage.removeItem('submission_draft');
+
+      alert(response.message || '¡Artículo enviado con éxito!');
+      navigate('/dashboard/submissions');
+    } catch (error: any) {
+      console.error('Error al finalizar el envío:', error);
+      alert(error.message || 'Error al enviar el artículo. Asegúrese de haber subido al menos un archivo.');
+    } finally {
+      setSaving(false);
     }
   };
 
   const canProceed = () => {
     switch (currentStep) {
-      case 1:
-        const allChecked = Object.values(formData.checklistItems).every(v => v === true);
-        return formData.titulo && formData.seccion && formData.idioma && allChecked && formData.consentimientoPrivacidad;
+      case 1: {
+        const allChecked = Object.values(formData.checklistItems).every((v) => v === true);
+        return Boolean(formData.titulo && formData.seccion && formData.idioma && allChecked && formData.consentimientoPrivacidad);
+      }
       case 2:
-        return formData.resumen && formData.palabrasClave.length > 0 && formData.referencias;
+        return Boolean(formData.resumen && formData.palabrasClave.length > 0 && formData.referencias);
       case 3:
-        return formData.archivos.length > 0 && formData.archivos.every(a => a.tipo);
+        return formData.archivos.length > 0 && formData.archivos.every((a) => Boolean(a.tipo));
       case 4:
         return formData.autores.length > 0;
       case 5:
-        return true;
       case 6:
-        return true;
       default:
         return true;
     }
@@ -1434,15 +1456,16 @@ const removeAuthor = async (autor: any, index: number) => {
                 Siguiente
               </button>
             ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={saving}
-                className="px-6 py-2 text-white rounded hover:opacity-90 disabled:opacity-50"
-                style={{ backgroundColor: FESC_RED }}
-              >
-                {saving ? 'Enviando...' : 'Enviar Artículo'}
-              </button>
-            )}
+                  <button
+                    type="button"
+                    onClick={handleFinalize}
+                    disabled={saving}
+                    className="px-6 py-2 text-white font-semibold rounded hover:opacity-90 disabled:opacity-50"
+                    style={{ backgroundColor: '#16a34a' }}
+                  >
+                    {saving ? 'Enviando...' : 'Enviar Artículo'}
+                  </button>
+                )}
           </div>
         </div>
       </div>

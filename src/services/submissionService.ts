@@ -82,10 +82,10 @@ export const submissionService = {
     });
   },
 
-  finalizeSubmission: async (id: string) => {
-    return apiFetch<{ message: string; submission: any }>(`/submissions/${id}/finalize`, {
+  async finalizeSubmission(submissionId: string) {
+    return apiFetch(`/submissions/${submissionId}/finalize`, {
       method: 'PATCH',
     });
-  },
+  }
 
 };
