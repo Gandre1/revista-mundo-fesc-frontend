@@ -1,29 +1,53 @@
-import { BarChart3, FileText, Clock, CheckCircle, XCircle, TrendingUp, Users, Calendar, PlusCircle } from 'lucide-react';
-import { storage } from '../lib/storage';
+import { FileText, Clock, CheckCircle, TrendingUp, PlusCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import { EditorialSubmission, submissionService } from '../../services/submissionService';
+import { useAuth } from './auth-context';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
 
 export function Dashboard() {
-  const [stats, setStats] = useState(storage.getStatistics());
-  const [submissions, setSubmissions] = useState(storage.getSubmissions());
+  const { user } = useAuth();
+  const [submissions, setSubmissions] = useState<EditorialSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Actualizar estadísticas cuando cambie el storage
-    const interval = setInterval(() => {
-      setStats(storage.getStatistics());
-      setSubmissions(storage.getSubmissions());
-    }, 1000);
-    
-    return () => clearInterval(interval);
+    let active = true;
+    submissionService.getEditorialSubmissions()
+      .then(({ submissions: result }) => {
+        if (active) {
+          setSubmissions(result);
+          setError(null);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          console.error('Error al cargar el resumen editorial:', cause);
+          setError(cause instanceof Error ? cause.message : 'No fue posible cargar el resumen editorial.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  // Calcular tasa de aceptación
-  const acceptanceRate = stats.acceptanceRate;
-  const avgReviewTime = stats.avgReviewTime;
+  const countStatus = (...statuses: string[]) =>
+    submissions.filter((submission) => statuses.includes(submission.estado.toLocaleLowerCase())).length;
+  const stats = {
+    totalSubmissions: submissions.length,
+    newSubmissions: countStatus('nuevo', 'enviado'),
+    inReview: countStatus('en_revision', 'under_review'),
+    accepted: countStatus('aceptado', 'accepted'),
+    rejected: countStatus('rechazado', 'rejected'),
+    published: countStatus('publicado', 'published'),
+  };
 
   return (
     <div className="space-y-6">
@@ -37,14 +61,16 @@ export function Dashboard() {
             Vista general del sistema editorial
           </p>
         </div>
-        <Link
-          to="/admin/new-submission"
-          className="px-6 py-3 text-white rounded-lg hover:opacity-90 transition-all flex items-center gap-2 shadow-sm"
-          style={{ backgroundColor: FESC_RED }}
-        >
-          <PlusCircle className="w-5 h-5" />
-          <span className="font-medium">Nuevo Envío</span>
-        </Link>
+        {user?.role === 'admin' && (
+          <Link
+            to="/admin/new-submission"
+            className="px-6 py-3 text-white rounded-lg hover:opacity-90 transition-all flex items-center gap-2 shadow-sm"
+            style={{ backgroundColor: FESC_RED }}
+          >
+            <PlusCircle className="w-5 h-5" />
+            <span className="font-medium">Nuevo Envío</span>
+          </Link>
+        )}
       </div>
 
       {/* Tarjetas de métricas principales */}
@@ -67,17 +93,23 @@ export function Dashboard() {
           icon={<CheckCircle className="w-6 h-6" />}
           title="Aceptados"
           value={stats.accepted}
-          subtitle={`Tasa: ${acceptanceRate}%`}
+          subtitle="Artículos aceptados"
           color="#10b981"
         />
         <MetricCard
           icon={<TrendingUp className="w-6 h-6" />}
-          title="Tiempo Promedio"
-          value={`${avgReviewTime} días`}
-          subtitle="Revisión"
+          title="Publicados"
+          value={stats.published}
+          subtitle="Artículos publicados"
           color="#6366f1"
         />
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          No fue posible cargar los envíos: {error}
+        </div>
+      )}
 
       {/* Estado de envíos */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -100,7 +132,7 @@ export function Dashboard() {
             Todos los artículos ({submissions.length})
           </h2>
           <Link
-            to="/admin/submissions"
+            to={user?.role === 'editor' ? '/editor/submissions' : '/admin/submissions'}
             className="text-sm hover:underline"
             style={{ color: FESC_RED }}
           >
@@ -108,7 +140,9 @@ export function Dashboard() {
           </Link>
         </div>
 
-        {submissions.length === 0 ? (
+        {loading ? (
+          <p className="py-8 text-center text-sm text-gray-500">Cargando envíos...</p>
+        ) : submissions.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
             <p className="text-sm">No hay envíos registrados</p>
@@ -118,7 +152,7 @@ export function Dashboard() {
             {submissions.map((submission) => (
               <Link
                 key={submission.id}
-                to={`/admin/submissions/${submission.id}`}
+                to={`${user?.role === 'editor' ? '/editor/submissions' : '/admin/submissions'}/${encodeURIComponent(submission.id)}`}
                 className="block p-4 border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all"
               >
                 <div className="flex items-start justify-between gap-4">
@@ -139,7 +173,7 @@ export function Dashboard() {
                       {submission.titulo}
                     </h3>
                     <p className="text-sm text-gray-600">
-                      {submission.autorNombre} • {submission.seccion} • {new Date(submission.fechaEnvio).toLocaleDateString('es-ES')}
+                      {submission.autor_nombre} • {submission.seccion || 'Sin sección'} • {formatDate(submission.fecha_envio || submission.created_at)}
                     </p>
                   </div>
                 </div>
@@ -149,12 +183,12 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Actividad reciente */}
+      {/* Envíos recientes */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h2 className="text-xl mb-4" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
-          Actividad Reciente
+          Envíos recientes
         </h2>
-        <RecentActivity />
+        <RecentActivity submissions={submissions.slice(0, 5)} />
       </div>
     </div>
   );
@@ -209,19 +243,22 @@ function StatusBar({ label, count, total, color }: {
   );
 }
 
-function RecentActivity() {
-  const recentEvents = storage.getRecentActivity();
-
+function RecentActivity({ submissions }: { submissions: EditorialSubmission[] }) {
+  if (submissions.length === 0) {
+    return <p className="text-sm text-gray-500">No hay envíos recientes.</p>;
+  }
   return (
     <div className="space-y-4">
-      {recentEvents.map((event, index) => (
-        <div key={index} className="flex items-center gap-3">
+      {submissions.map((submission) => (
+        <div key={submission.id} className="flex items-center gap-3">
           <div className="p-2 rounded" style={{ backgroundColor: `${FESC_RED}20` }}>
             <FileText className="w-5 h-5" style={{ color: FESC_RED }} />
           </div>
           <div>
-            <p className="text-sm font-semibold" style={{ color: FESC_GRAY }}>{event.title}</p>
-            <p className="text-xs text-gray-500">{event.date}</p>
+            <p className="text-sm font-semibold" style={{ color: FESC_GRAY }}>{submission.titulo}</p>
+            <p className="text-xs text-gray-500">
+              {submission.autor_nombre} · {formatDate(submission.fecha_envio || submission.created_at)}
+            </p>
           </div>
         </div>
       ))}
@@ -230,20 +267,31 @@ function RecentActivity() {
 }
 
 function getStatusColor(status: string): string {
-  switch (status) {
-    case 'Nuevo':
+  switch (status.toLocaleLowerCase()) {
+    case 'nuevo':
+    case 'enviado':
       return '#3b82f6';
-    case 'En revisión':
+    case 'en_revision':
+    case 'under_review':
       return '#f59e0b';
-    case 'Revisiones requeridas':
+    case 'revisiones_requeridas':
       return '#f97316';
-    case 'Aceptado':
+    case 'aceptado':
+    case 'accepted':
       return '#10b981';
-    case 'Rechazado':
+    case 'rechazado':
+    case 'rejected':
       return '#ef4444';
-    case 'Publicado':
+    case 'publicado':
+    case 'published':
       return '#8b5cf6';
     default:
       return '#9ca3af';
   }
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return 'Fecha pendiente';
+  const date = new Date(value.replace(' ', 'T'));
+  return Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleDateString('es-ES');
 }

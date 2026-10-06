@@ -1,40 +1,62 @@
 import { FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { storage } from '../lib/storage';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { useAuth } from './auth-context';
+import { submissionService } from '../../services/submissionService';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
 
+interface SubmissionItem {
+  id: string;
+  titulo?: string;
+  seccion?: string;
+  fecha_envio?: string | null;
+  created_at?: string | null;
+  createdAt?: string;
+  fechaEnvio?: string;
+  estado: string;
+  borrador?: boolean | number;
+}
+
 export function DashboardAutor() {
-  const { user } = useAuth();
-  const [submissions, setSubmissions] = useState(storage.getSubmissions());
+  const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSubmissions(storage.getSubmissions());
-    }, 1000);
-    
-    return () => clearInterval(interval);
+    fetchMySubmissions();
   }, []);
 
-  // Filtrar solo envíos del autor actual
-  const misEnvios = submissions.filter(s => s.autorId === user?.id);
-  
+  const fetchMySubmissions = async () => {
+    try {
+      setLoading(true);
+      const data = await submissionService.getMySubmissions();
+      // Si la API responde { submissions: [...] } o directamente el array
+      const list = Array.isArray(data) ? data : data?.submissions || [];
+      setSubmissions(list);
+    } catch (error) {
+      console.error('Error cargando los envíos del autor:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cálculo de estadísticas dinámicas según la BD
   const stats = {
-    total: misEnvios.length,
-    borradores: misEnvios.filter(s => s.borrador).length,
-    enRevision: misEnvios.filter(s => s.estado === 'En revisión').length,
-    aceptados: misEnvios.filter(s => s.estado === 'Aceptado').length,
-    rechazados: misEnvios.filter(s => s.estado === 'Rechazado').length,
-    publicados: misEnvios.filter(s => s.estado === 'Publicado').length,
+    total: submissions.length,
+    borradores: submissions.filter(s => s.borrador || s.estado === 'borrador').length,
+    enRevision: submissions.filter(s => s.estado === 'En revisión' || s.estado === 'en_revision' || s.estado === 'recibido').length,
+    aceptados: submissions.filter(s => s.estado === 'Aceptado' || s.estado === 'aceptado' || s.estado === 'publicado').length,
+    rechazados: submissions.filter(s => s.estado === 'Rechazado' || s.estado === 'rechazado').length,
   };
 
   // Obtener envíos recientes (últimos 5)
-  const enviosRecientes = [...misEnvios]
-    .sort((a, b) => new Date(b.fechaEnvio).getTime() - new Date(a.fechaEnvio).getTime())
+  const enviosRecientes = [...submissions]
+    .sort((a, b) => {
+      const dateA = getSubmissionDate(a)?.getTime() || 0;
+      const dateB = getSubmissionDate(b)?.getTime() || 0;
+      return dateB - dateA;
+    })
     .slice(0, 5);
 
   return (
@@ -96,7 +118,11 @@ export function DashboardAutor() {
           </Link>
         </div>
 
-        {enviosRecientes.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            Cargando tus artículos...
+          </div>
+        ) : enviosRecientes.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
             <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
             <p className="text-sm">No has enviado ningún artículo aún</p>
@@ -110,38 +136,58 @@ export function DashboardAutor() {
           </div>
         ) : (
           <div className="space-y-3">
-            {enviosRecientes.map((submission) => (
-              <Link
-                key={submission.id}
-                to={`/autor/envios/${submission.id}`}
-                className="block p-4 border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 truncate mb-1">
-                      {submission.titulo || 'Sin título'}
-                    </h3>
-                    <p className="text-sm text-gray-600 truncate">
-                      {submission.seccion} • {new Date(submission.fechaEnvio).toLocaleDateString('es-ES')}
-                    </p>
+            {enviosRecientes.map((submission) => {
+              const submissionDate = getSubmissionDate(submission);
+              const dateLabel = submission.fecha_envio || submission.fechaEnvio ? 'Enviado' : 'Creado';
+              const formattedDate = submissionDate
+                ? `${dateLabel}: ${submissionDate.toLocaleDateString('es-ES')}`
+                : 'Fecha no disponible';
+
+              return (
+                <Link
+                  key={submission.id}
+                  to={`/autor/envios/${submission.id}`}
+                  className="block p-4 border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-gray-900 truncate mb-1">
+                        {submission.titulo || 'Sin título'}
+                      </h3>
+                      <p className="text-sm text-gray-600 truncate">
+                        {submission.seccion || 'Artículos de Investigación'} • {formattedDate}
+                      </p>
+                    </div>
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap"
+                      style={{
+                        backgroundColor: getStatusColor(submission.estado) + '20',
+                        color: getStatusColor(submission.estado),
+                      }}
+                    >
+                      {getStatusLabel(submission.estado)}
+                    </span>
                   </div>
-                  <span
-                    className="px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap"
-                    style={{
-                      backgroundColor: getStatusColor(submission.estado) + '20',
-                      color: getStatusColor(submission.estado),
-                    }}
-                  >
-                    {getStatusLabel(submission.estado)}
-                  </span>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function getSubmissionDate(submission: SubmissionItem): Date | null {
+  const rawDate =
+    submission.fecha_envio ||
+    submission.fechaEnvio ||
+    submission.created_at ||
+    submission.createdAt;
+  if (!rawDate) return null;
+
+  const parsedDate = new Date(rawDate.replace(' ', 'T'));
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 }
 
 function MetricCard({ icon, title, value, subtitle, color }: {
@@ -170,18 +216,17 @@ function MetricCard({ icon, title, value, subtitle, color }: {
 }
 
 function getStatusColor(status: string): string {
-  const colors: Record<string, string> = {
-    'Nuevo': '#0891b2',
-    'En revisión': '#f59e0b',
-    'Revisiones requeridas': '#f97316',
-    'Aceptado': '#10b981',
-    'Rechazado': '#ef4444',
-    'Publicado': '#8b5cf6',
-  };
-  return colors[status] || '#6b7280';
+  const normalized = (status || '').toLowerCase();
+  if (normalized.includes('revision') || normalized.includes('evaluacion')) return '#f59e0b';
+  if (normalized.includes('aceptado') || normalized.includes('aprobado')) return '#10b981';
+  if (normalized.includes('rechazado')) return '#ef4444';
+  if (normalized.includes('publicado')) return '#8b5cf6';
+  if (normalized.includes('nuevo') || normalized.includes('recibido')) return '#0891b2';
+  return '#6b7280';
 }
 
 function getStatusLabel(status: string): string {
-  // Ya está en español, solo retornarlo
+  if (!status) return 'Enviado';
+  if (status === 'en_revision') return 'En revisión';
   return status;
 }

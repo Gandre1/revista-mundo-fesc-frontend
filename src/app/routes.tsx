@@ -4,7 +4,7 @@ import { Register } from './components/register';
 import { SubmissionWizardNew } from './components/submission-wizard';
 import { SubmissionSuccess } from './components/submission-success';
 import { SubmissionsManagement } from './components/submissions-management';
-import { SubmissionDetailNew } from './components/submission-detail-new';
+import { SubmissionDetail } from './components/submission-detail';
 import { AdminLayout } from './components/admin-layout';
 import { AutorLayout } from './components/autor-layout';
 import { EditorLayout } from './components/editor-layout';
@@ -52,7 +52,7 @@ function AdminSubmissionDetailPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout>
-        <SubmissionDetailNew />
+        <SubmissionDetail />
       </AdminLayout>
     </ProtectedRoute>
   );
@@ -133,7 +133,7 @@ function AutorSubmissionDetailPage() {
   return (
     <ProtectedRoute allowedRoles={['author']}>
       <AutorLayout>
-        <SubmissionDetailNew />
+        <SubmissionDetail />
       </AutorLayout>
     </ProtectedRoute>
   );
@@ -184,7 +184,7 @@ function EditorSubmissionDetailPage() {
   return (
     <ProtectedRoute allowedRoles={['editor']}>
       <EditorLayout>
-        <SubmissionDetailNew />
+        <SubmissionDetail />
       </EditorLayout>
     </ProtectedRoute>
   );
@@ -226,6 +226,16 @@ function RevisorDashboardPage() {
     <ProtectedRoute allowedRoles={['reviewer']}>
       <RevisorLayout>
         <DashboardRevisor />
+      </RevisorLayout>
+    </ProtectedRoute>
+  );
+}
+
+function RevisorSubmissionDetailPage() {
+  return (
+    <ProtectedRoute allowedRoles={['reviewer']}>
+      <RevisorLayout>
+        <SubmissionDetail />
       </RevisorLayout>
     </ProtectedRoute>
   );
@@ -374,7 +384,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/revisor/asignados/:id',
-    element: <AdminSubmissionDetailPage />,
+    element: <RevisorSubmissionDetailPage />,
   },
   {
     path: '/revisor/profile',
