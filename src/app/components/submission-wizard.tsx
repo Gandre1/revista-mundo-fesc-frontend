@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { Check, Upload, X, FileText, Plus, Trash2, Save } from 'lucide-react';
 import { storage, Author } from '../lib/storage';
 import { useAuth } from './auth-context';
@@ -28,10 +28,13 @@ const SECCIONES = [
 
 export function SubmissionWizardNew() {
   const navigate = useNavigate();
+  const { id: draftId } = useParams();
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(draftId));
+  const [draftLoadError, setDraftLoadError] = useState<string | null>(null);
 
   // Redirigir al login si no hay usuario
   useEffect(() => {
@@ -76,8 +79,82 @@ export function SubmissionWizardNew() {
     esCorresponsal: false,
   });
 
-  // Cargar borrador si existe en storage local
+  // Los borradores seleccionados desde Mis envíos se recuperan desde el backend.
   useEffect(() => {
+    let active = true;
+
+    if (draftId) {
+      setLoadingDraft(true);
+      setDraftLoadError(null);
+      submissionService.getSubmissionById(draftId)
+        .then(({ submission }) => {
+          if (!active) return;
+
+          const localDraft = localStorage.getItem('submission_draft');
+          let localFormData: any = {};
+          try {
+            const parsed = localDraft ? JSON.parse(localDraft) : null;
+            if (String(parsed?.submissionId || '') === String(draftId)) {
+              localFormData = parsed?.formData || {};
+            }
+          } catch (error) {
+            console.error('Error al recuperar los datos locales del borrador:', error);
+          }
+
+          const keywords = submission.palabras_clave || '';
+          setFormData((previous) => ({
+            ...previous,
+            ...localFormData,
+            id: submission.id,
+            titulo: submission.titulo || '',
+            seccion: submission.seccion || '',
+            idioma: submission.idioma || 'Español',
+            resumen: submission.resumen || '',
+            palabrasClave: Array.isArray(localFormData.palabrasClave)
+              && localFormData.palabrasClave.join(', ') === keywords
+              ? localFormData.palabrasClave
+              : keywords.split(',').map((keyword) => keyword.trim()).filter(Boolean),
+            referencias: submission.referencias || '',
+            comentariosEditor: submission.comentarios_editor || '',
+            autores: (submission.autores || []).map((author: any) => ({
+              id: author.id,
+              nombre: author.nombre,
+              apellidos: author.apellidos,
+              email: author.email,
+              afiliacion: author.afiliacion || '',
+              pais: author.pais || '',
+              orcid: author.orcid || '',
+              esCorresponsal: Boolean(author.es_corresponsal),
+            })),
+            archivos: (submission.archivos || []).map((file: any) => ({
+              id: file.id,
+              nombre: file.nombre_original,
+              tamano: file.tamano,
+              tipo: file.tipo,
+            })),
+          }));
+          setSubmissionId(String(submission.id));
+          const savedStep = Number(submission.paso_wizard);
+          const localStep = Number(localFormData.paso_wizard);
+          const stepToRestore = Number.isInteger(localStep) && localStep >= 1 && localStep <= STEPS.length
+            ? localStep
+            : savedStep;
+          setCurrentStep(Number.isInteger(stepToRestore) && stepToRestore >= 1 && stepToRestore <= STEPS.length ? stepToRestore : 1);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          console.error(`Error al cargar el borrador ${draftId}:`, error);
+          setDraftLoadError(error instanceof Error ? error.message : 'No fue posible cargar el borrador.');
+        })
+        .finally(() => {
+          if (active) setLoadingDraft(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }
+
     const savedDraft = localStorage.getItem('submission_draft');
     if (savedDraft) {
       try {
@@ -91,6 +168,10 @@ export function SubmissionWizardNew() {
         if (confirmRestore) {
           // Carga los datos del formulario
           if (parsed.formData) setFormData(parsed.formData);
+          const savedStep = Number(parsed.paso_wizard ?? parsed.formData?.paso_wizard);
+          if (Number.isInteger(savedStep) && savedStep >= 1 && savedStep <= STEPS.length) {
+            setCurrentStep(savedStep);
+          }
           
           // Restaurar el ID del backend para no duplicar
           if (parsed.submissionId) {
@@ -105,7 +186,12 @@ export function SubmissionWizardNew() {
         console.error('Error al parsear el borrador local:', e);
       }
     }
-  }, []);
+    setLoadingDraft(false);
+
+    return () => {
+      active = false;
+    };
+  }, [draftId]);
 
   useEffect(() => {
     const fetchAuthors = async () => {
@@ -115,7 +201,16 @@ export function SubmissionWizardNew() {
           if (response && response.authors) {
             setFormData((prev: any) => ({
               ...prev,
-              autores: response.authors,
+              autores: response.authors.map((author: any) => ({
+                id: author.id,
+                nombre: author.nombre,
+                apellidos: author.apellidos,
+                email: author.email,
+                afiliacion: author.afiliacion || '',
+                pais: author.pais || '',
+                orcid: author.orcid || '',
+                esCorresponsal: Boolean(author.es_corresponsal ?? author.esCorresponsal),
+              })),
             }));
           }
         } catch (error) {
@@ -128,7 +223,7 @@ export function SubmissionWizardNew() {
   }, [currentStep, submissionId]);
 
   // Guardar en la Base de Datos
-  const saveToBackend = async (_mode?: string) => {
+  const saveToBackend = async (_mode?: string, wizardStep = currentStep) => {
     console.log('>>> [BACKEND] Sincronizando con MySQL...');
     setSaving(true);
 
@@ -145,6 +240,7 @@ export function SubmissionWizardNew() {
         idioma: formData.idioma || 'es',
         comentarios_editor: formData.comentariosEditor || '',
         referencias: formData.referencias || '',
+        paso_wizard: wizardStep,
       };
 
       let response: any;
@@ -167,7 +263,7 @@ export function SubmissionWizardNew() {
         localStorage.setItem(
           'submission_draft',
           JSON.stringify({
-            formData: { ...formData, id: currentId },
+            formData: { ...formData, id: currentId, paso_wizard: wizardStep },
             submissionId: currentId,
             updatedAt: new Date().toISOString(),
           })
@@ -196,13 +292,10 @@ export function SubmissionWizardNew() {
   const handleNext = async () => {
     console.log('>>> Avanzando paso actual:', currentStep);
     
-    // Si estamos en Paso 1 o 2, sincronizamos con el backend
-    if (currentStep === 1 || currentStep === 2) {
-      try {
-        await saveToBackend('draft');
-      } catch (e) {
-        console.warn('Continuando navegación local aunque falló la API backend');
-      }
+    try {
+      await saveToBackend('draft', currentStep + 1);
+    } catch (e) {
+      console.warn('Continuando navegación local aunque falló la API backend');
     }
 
     if (currentStep < STEPS.length) {
@@ -484,6 +577,26 @@ export function SubmissionWizardNew() {
         return true;
     }
   };
+
+  if (loadingDraft) {
+    return <div className="p-8 text-center text-sm text-gray-500">Cargando borrador...</div>;
+  }
+
+  if (draftLoadError) {
+    return (
+      <div className="p-8 text-center bg-white rounded-lg border border-gray-200 max-w-xl mx-auto">
+        <p role="alert" className="text-sm text-red-700">{draftLoadError}</p>
+        <button
+          type="button"
+          onClick={() => navigate('/autor/envios')}
+          className="mt-4 px-4 py-2 text-white rounded"
+          style={{ backgroundColor: FESC_RED }}
+        >
+          Volver a Mis envíos
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -1449,7 +1562,7 @@ export function SubmissionWizardNew() {
             {currentStep < STEPS.length ? (
               <button
                 onClick={handleNext}
-                disabled={!canProceed()}
+                disabled={!canProceed() || saving}
                 className="px-6 py-2 text-white rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: FESC_RED }}
               >

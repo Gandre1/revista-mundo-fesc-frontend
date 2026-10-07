@@ -1,6 +1,6 @@
 import { FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { submissionService } from '../../services/submissionService';
 
 const FESC_RED = '#e30513';
@@ -17,9 +17,11 @@ interface SubmissionItem {
   fechaEnvio?: string;
   estado: string;
   borrador?: boolean | number;
+  paso_wizard?: number;
 }
 
 export function DashboardAutor() {
+  const location = useLocation();
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,13 +53,15 @@ export function DashboardAutor() {
   };
 
   // Obtener envíos recientes (últimos 5)
-  const enviosRecientes = [...submissions]
+  const enviosOrdenados = [...submissions]
     .sort((a, b) => {
       const dateA = getSubmissionDate(a)?.getTime() || 0;
       const dateB = getSubmissionDate(b)?.getTime() || 0;
       return dateB - dateA;
-    })
-    .slice(0, 5);
+    });
+  const enviosRecientes = location.pathname === '/autor/envios'
+    ? enviosOrdenados
+    : enviosOrdenados.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -142,15 +146,19 @@ export function DashboardAutor() {
               const formattedDate = submissionDate
                 ? `${dateLabel}: ${submissionDate.toLocaleDateString('es-ES')}`
                 : 'Fecha no disponible';
+              const isDraft = Boolean(submission.borrador)
+                || ['borrador', 'draft'].includes((submission.estado || '').toLowerCase());
 
               return (
-                <Link
+                <div
                   key={submission.id}
-                  to={`/autor/envios/${submission.id}`}
-                  className="block p-4 border border-gray-200 rounded hover:border-gray-300 hover:shadow-sm transition-all"
+                  className="flex items-center gap-4 p-4 border border-gray-200 rounded hover:border-gray-300 transition-all"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
+                  <Link
+                    to={`/autor/envios/${submission.id}`}
+                    className="flex flex-1 min-w-0 items-start justify-between gap-4"
+                  >
+                    <div className="min-w-0">
                       <h3 className="font-medium text-gray-900 truncate mb-1">
                         {submission.titulo || 'Sin título'}
                       </h3>
@@ -167,8 +175,17 @@ export function DashboardAutor() {
                     >
                       {getStatusLabel(submission.estado)}
                     </span>
-                  </div>
-                </Link>
+                  </Link>
+                  {isDraft && (
+                    <Link
+                      to={`/autor/new-submission/${submission.id}`}
+                      className="shrink-0 px-3 py-2 text-sm font-medium text-white rounded hover:opacity-90"
+                      style={{ backgroundColor: FESC_RED }}
+                    >
+                      Continuar
+                    </Link>
+                  )}
+                </div>
               );
             })}
           </div>

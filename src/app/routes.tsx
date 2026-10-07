@@ -337,6 +337,10 @@ export const router = createBrowserRouter([
     element: <AutorNewSubmissionPage />,
   },
   {
+    path: '/autor/new-submission/:id',
+    element: <AutorNewSubmissionPage />,
+  },
+  {
     path: '/autor/submission-detail/:id',
     element: <AutorSubmissionDetailPage />,
   },
