@@ -1,10 +1,31 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, BookOpen, Download, Eye, FileText, Languages, Paperclip, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookOpen,
+  Check,
+  ClipboardCheck,
+  Download,
+  Eye,
+  FileText,
+  Languages,
+  Paperclip,
+  Scale,
+  Send,
+  Users,
+} from 'lucide-react';
 import { submissionService, SubmissionDetail as Submission } from '../../services/submissionService';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
+
+const EDITORIAL_STAGES = [
+  { label: 'Enviado', description: 'El artículo fue recibido por la revista.', Icon: Send },
+  { label: 'En revisión', description: 'El equipo editorial coordina la evaluación del artículo.', Icon: ClipboardCheck },
+  { label: 'Decisión editorial', description: 'La decisión editorial se comunica al autor.', Icon: Scale },
+  { label: 'Aceptado / En edición', description: 'El artículo aceptado avanza hacia su preparación editorial.', Icon: BookOpen },
+  { label: 'Publicado', description: 'El artículo está disponible en la revista.', Icon: Check },
+];
 
 interface SubmissionDetailProps {
   submissionId?: string;
@@ -21,6 +42,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [error, setError] = useState<string | null>(null);
   const [fileActionId, setFileActionId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [selectedTimelineStage, setSelectedTimelineStage] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -139,6 +161,11 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const files = submission.archivos || [];
   const authors = submission.autores || [];
   const isDraft = submission.borrador === true || submission.borrador === 1;
+  const currentTimelineStage = isDraft
+    ? -1
+    : getEditorialStageIndex(submission.estado || submission.status, submission.paso_envio);
+  const visibleTimelineStage = selectedTimelineStage ?? Math.max(currentTimelineStage, 0);
+  const selectedStage = EDITORIAL_STAGES[visibleTimelineStage];
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-4">
@@ -175,6 +202,92 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             {isDraft ? 'Borrador' : formatStatus(submission.estado)}
           </span>
         </div>
+      </section>
+
+      <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b pb-3 mb-5">
+          <div>
+            <h2 className="font-semibold text-lg" style={{ color: FESC_DARK_RED }}>Proceso editorial</h2>
+            <p className="text-sm text-gray-500 mt-1">Selecciona una etapa para consultar en qué consiste.</p>
+          </div>
+          <span
+            className="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap self-start"
+            style={{ backgroundColor: isDraft ? '#f3f4f6' : '#fee2e2', color: isDraft ? '#4b5563' : FESC_DARK_RED }}
+          >
+            {isDraft ? 'Borrador sin enviar' : formatStatus(submission.estado || submission.status || '')}
+          </span>
+        </div>
+
+        <ol aria-label="Etapas del proceso editorial" className="flex overflow-x-auto pb-2">
+          {EDITORIAL_STAGES.map(({ label, Icon }, index) => {
+            const isCurrent = index === currentTimelineStage;
+            const isComplete = currentTimelineStage >= 0 && index < currentTimelineStage;
+            const isSelected = index === visibleTimelineStage;
+
+            return (
+              <li key={label} className="flex min-w-[148px] flex-1 items-start">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTimelineStage(index)}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  aria-pressed={isSelected}
+                  aria-label={`${index + 1}. ${label}${isCurrent ? ', etapa actual' : isComplete ? ', completada' : ''}`}
+                  className="group flex w-full flex-col items-center text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded"
+                  style={{ '--tw-ring-color': FESC_RED } as React.CSSProperties}
+                >
+                  <span
+                    className="flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors"
+                    style={{
+                      borderColor: isCurrent || isComplete ? FESC_RED : '#d1d5db',
+                      backgroundColor: isCurrent ? FESC_RED : isComplete ? '#fee2e2' : '#fff',
+                      color: isCurrent ? '#fff' : isComplete ? FESC_DARK_RED : '#6b7280',
+                    }}
+                  >
+                    {isComplete ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                  </span>
+                  <span
+                    className="mt-2 px-1 text-xs font-semibold leading-snug"
+                    style={{ color: isCurrent || isSelected ? FESC_DARK_RED : isComplete ? '#4b5563' : '#6b7280' }}
+                  >
+                    {index + 1}. {label}
+                  </span>
+                  <span className="mt-1 text-[11px] text-gray-500">
+                    {isCurrent ? 'Etapa actual' : isComplete ? 'Completada' : 'Pendiente'}
+                  </span>
+                </button>
+                {index < EDITORIAL_STAGES.length - 1 && (
+                  <span
+                    aria-hidden="true"
+                    className="mt-5 h-0.5 min-w-4 flex-1"
+                    style={{ backgroundColor: isComplete ? FESC_RED : '#e5e7eb' }}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="mt-4 rounded-md border-l-4 bg-gray-50 p-3" style={{ borderLeftColor: FESC_RED }}>
+          <p className="text-sm font-semibold text-gray-800">
+            {visibleTimelineStage + 1}. {selectedStage.label}
+            {visibleTimelineStage === currentTimelineStage && !isDraft && ' · Etapa actual'}
+          </p>
+          <p className="mt-1 text-sm text-gray-600">{selectedStage.description}</p>
+          {isDraft && (
+            <p className="mt-1 text-xs text-gray-500">
+              El proceso editorial comienza cuando el artículo se envía a la revista.
+            </p>
+          )}
+          {isRejectedStatus(submission.estado || submission.status) && visibleTimelineStage === currentTimelineStage && (
+            <p className="mt-1 text-xs font-medium text-gray-600">
+              La decisión registrada para este artículo es: {formatStatus(submission.estado || submission.status || '')}.
+            </p>
+          )}
+        </div>
+
+        <p className="mt-4 text-xs text-gray-500">
+          {isDraft ? 'Fecha de envío: pendiente' : `Fecha de envío: ${formatDate(submission.fecha_envio)}`}
+        </p>
       </section>
 
       <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
@@ -315,11 +428,68 @@ function formatStatus(status: string): string {
     enviado: 'Enviado',
     en_revision: 'En revisión',
     revisiones_requeridas: 'Revisiones requeridas',
+    revisions_required: 'Revisiones requeridas',
     aceptado: 'Aceptado',
+    accepted: 'Aceptado',
     rechazado: 'Rechazado',
+    rejected: 'Rechazado',
     publicado: 'Publicado',
+    published: 'Publicado',
+    submitted: 'Enviado',
+    under_review: 'En revisión',
   };
   return labels[status.toLocaleLowerCase()] || status || 'Sin estado';
+}
+
+function getEditorialStageIndex(status: string | null | undefined, pasoEnvio: number | string | null | undefined): number {
+  const normalizedStatus = normalizeEditorialStatus(status || '');
+  const statusStages: Record<string, number> = {
+    nuevo: 0,
+    enviado: 0,
+    submitted: 0,
+    recibido: 1,
+    en_revision: 1,
+    en_evaluacion: 1,
+    evaluacion: 1,
+    under_review: 1,
+    revisiones_requeridas: 2,
+    revisions_required: 2,
+    decision: 2,
+    decision_editorial: 2,
+    rechazado: 2,
+    rejected: 2,
+    aceptado: 3,
+    accepted: 3,
+    aprobado: 3,
+    approved: 3,
+    en_edicion: 3,
+    aceptado_en_edicion: 3,
+    en_publicacion: 3,
+    publicado: 4,
+    published: 4,
+  };
+
+  if (normalizedStatus in statusStages) return statusStages[normalizedStatus];
+  if (typeof pasoEnvio === 'number' && Number.isInteger(pasoEnvio) && pasoEnvio >= 1 && pasoEnvio <= EDITORIAL_STAGES.length) {
+    return pasoEnvio - 1;
+  }
+
+  const normalizedStep = normalizeEditorialStatus(String(pasoEnvio || ''));
+  return statusStages[normalizedStep] ?? -1;
+}
+
+function normalizeEditorialStatus(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+}
+
+function isRejectedStatus(status: string | null | undefined): boolean {
+  const normalizedStatus = normalizeEditorialStatus(status || '');
+  return normalizedStatus === 'rechazado' || normalizedStatus === 'rejected';
 }
 
 function formatDate(value: string | null): string {

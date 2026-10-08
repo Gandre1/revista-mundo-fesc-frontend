@@ -83,6 +83,8 @@ export interface SubmissionDetail {
   comentarios_editor: string | null;
   referencias: string | null;
   estado: string;
+  status?: string | null;
+  paso_envio?: number | string | null;
   borrador: boolean | number;
   paso_wizard: number;
   fecha_envio: string | null;
