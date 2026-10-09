@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { Check, Upload, X, FileText, Plus, Trash2, Save } from 'lucide-react';
 import { storage, Author } from '../lib/storage';
 import { useAuth } from './auth-context';
@@ -28,6 +28,7 @@ const SECCIONES = [
 
 export function SubmissionWizardNew() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: draftId } = useParams();
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
@@ -550,7 +551,12 @@ export function SubmissionWizardNew() {
       localStorage.removeItem('submission_draft');
 
       alert(response.message || '¡Artículo enviado con éxito!');
-      navigate('/dashboard/submissions');
+      const destination = location.pathname.startsWith('/autor/')
+        ? '/autor/envios'
+        : location.pathname.startsWith('/admin/')
+          ? '/admin/submissions'
+          : '/submission/success';
+      navigate(destination);
     } catch (error: any) {
       console.error('Error al finalizar el envío:', error);
       alert(error.message || 'Error al enviar el artículo. Asegúrese de haber subido al menos un archivo.');

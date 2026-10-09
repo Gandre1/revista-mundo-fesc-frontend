@@ -1,4 +1,4 @@
-import { FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, Clock, Download, Eye, FileText, Trash2, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { submissionService } from '../../services/submissionService';
@@ -16,28 +16,33 @@ interface SubmissionItem {
   createdAt?: string;
   fechaEnvio?: string;
   estado: string;
-  borrador?: boolean | number;
+  borrador?: boolean | number | string;
   paso_wizard?: number;
+  total_archivos?: number;
 }
 
 export function DashboardAutor() {
   const location = useLocation();
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionSubmissionId, setActionSubmissionId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMySubmissions();
+    void fetchMySubmissions();
   }, []);
 
   const fetchMySubmissions = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await submissionService.getMySubmissions();
       // Si la API responde { submissions: [...] } o directamente el array
       const list = Array.isArray(data) ? data : data?.submissions || [];
       setSubmissions(list);
-    } catch (error) {
-      console.error('Error cargando los envíos del autor:', error);
+    } catch (cause) {
+      console.error('Error cargando los envíos del autor:', cause);
+      setError(cause instanceof Error ? cause.message : 'No fue posible cargar tus artículos.');
     } finally {
       setLoading(false);
     }
@@ -46,7 +51,7 @@ export function DashboardAutor() {
   // Cálculo de estadísticas dinámicas según la BD
   const stats = {
     total: submissions.length,
-    borradores: submissions.filter(s => s.borrador || s.estado === 'borrador').length,
+    borradores: submissions.filter(isDraft).length,
     enRevision: submissions.filter(s => s.estado === 'En revisión' || s.estado === 'en_revision' || s.estado === 'recibido').length,
     aceptados: submissions.filter(s => s.estado === 'Aceptado' || s.estado === 'aceptado' || s.estado === 'publicado').length,
     rechazados: submissions.filter(s => s.estado === 'Rechazado' || s.estado === 'rechazado').length,
@@ -146,13 +151,13 @@ export function DashboardAutor() {
               const formattedDate = submissionDate
                 ? `${dateLabel}: ${submissionDate.toLocaleDateString('es-ES')}`
                 : 'Fecha no disponible';
-              const isDraft = Boolean(submission.borrador)
-                || ['borrador', 'draft'].includes((submission.estado || '').toLowerCase());
+              const draft = isDraft(submission);
+              const isActionInProgress = actionSubmissionId === submission.id;
 
               return (
                 <div
                   key={submission.id}
-                  className="flex items-center gap-4 p-4 border border-gray-200 rounded hover:border-gray-300 transition-all"
+                  className="flex flex-col gap-4 p-4 border border-gray-200 rounded hover:border-gray-300 transition-all sm:flex-row sm:items-center"
                 >
                   <Link
                     to={`/autor/envios/${submission.id}`}
@@ -176,23 +181,131 @@ export function DashboardAutor() {
                       {getStatusLabel(submission.estado)}
                     </span>
                   </Link>
-                  {isDraft && (
-                    <Link
-                      to={`/autor/new-submission/${submission.id}`}
-                      className="shrink-0 px-3 py-2 text-sm font-medium text-white rounded hover:opacity-90"
-                      style={{ backgroundColor: FESC_RED }}
+                  <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                    {draft ? (
+                      <>
+                        <Link
+                          to={`/autor/new-submission/${submission.id}`}
+                          className="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                          style={{ backgroundColor: FESC_RED }}
+                        >
+                          <FileText className="h-4 w-4" />
+                          Continuar
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDraft(submission)}
+                          disabled={isActionInProgress}
+                          className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {isActionInProgress ? 'Eliminando...' : 'Eliminar borrador'}
+                        </button>
+                      </>
+                    ) : (
+                      <Link
+                        to={`/autor/envios/${submission.id}`}
+                        className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Ver detalle
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadFiles(submission)}
+                      disabled={isActionInProgress}
+                      className="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+                      style={{ borderColor: FESC_RED, color: FESC_DARK_RED }}
                     >
-                      Continuar
-                    </Link>
-                  )}
+                      <Download className="h-4 w-4" />
+                      Descargar archivos
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
+        {error && (
+          <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => void fetchMySubmissions()}
+              disabled={loading}
+              className="font-medium underline disabled:opacity-50"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
+
+  async function handleDeleteDraft(submission: SubmissionItem) {
+    if (!window.confirm(`¿Eliminar el borrador "${submission.titulo || 'Sin título'}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setActionSubmissionId(submission.id);
+    setError(null);
+    try {
+      await submissionService.deleteSubmission(submission.id);
+      setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+      try {
+        const savedDraft = localStorage.getItem('submission_draft');
+        if (savedDraft && String(JSON.parse(savedDraft)?.submissionId || '') === String(submission.id)) {
+          localStorage.removeItem('submission_draft');
+        }
+      } catch (cause) {
+        console.error('No fue posible limpiar la copia local del borrador eliminado:', cause);
+      }
+    } catch (cause) {
+      console.error(`Error al eliminar el borrador ${submission.id}:`, cause);
+      setError(cause instanceof Error ? cause.message : 'No fue posible eliminar el borrador.');
+    } finally {
+      setActionSubmissionId(null);
+    }
+  }
+
+  async function handleDownloadFiles(submission: SubmissionItem) {
+    setActionSubmissionId(submission.id);
+    setError(null);
+    try {
+      const { submission: detail } = await submissionService.getSubmissionById(submission.id);
+      if (!detail.archivos?.length) {
+        setError('Este artículo no tiene archivos adjuntos para descargar.');
+        return;
+      }
+
+      for (const file of detail.archivos) {
+        const blob = await submissionService.getFileContent(file.id, true);
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = file.nombre_original;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
+    } catch (cause) {
+      console.error(`Error al descargar los archivos del envío ${submission.id}:`, cause);
+      setError(cause instanceof Error ? cause.message : 'No fue posible descargar los archivos.');
+    } finally {
+      setActionSubmissionId(null);
+    }
+  }
+}
+
+function isDraft(submission: SubmissionItem): boolean {
+  const draftFlag = submission.borrador;
+  return draftFlag === true
+    || draftFlag === 1
+    || draftFlag === '1'
+    || ['borrador', 'draft'].includes((submission.estado || '').toLocaleLowerCase());
 }
 
 function getSubmissionDate(submission: SubmissionItem): Date | null {
@@ -244,6 +357,7 @@ function getStatusColor(status: string): string {
 
 function getStatusLabel(status: string): string {
   if (!status) return 'Enviado';
-  if (status === 'en_revision') return 'En revisión';
+  if (['borrador', 'draft'].includes(status.toLocaleLowerCase())) return 'Borrador';
+  if (status.toLocaleLowerCase() === 'en_revision') return 'En revisión';
   return status;
 }

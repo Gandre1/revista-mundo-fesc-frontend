@@ -131,10 +131,16 @@ export const submissionService = {
     });
   },
 
-  updateSubmission: async (id: string, data: any) => {
-    return apiFetch(`/submissions/${id}`, {
+  updateSubmission: async (id: string, data: Partial<SubmissionPayload> & Record<string, unknown>) => {
+    return apiFetch(`/submissions/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  },
+
+  deleteSubmission: async (id: string) => {
+    return apiFetch<{ message?: string }>(`/submissions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     });
   },
 
@@ -159,7 +165,7 @@ export const submissionService = {
   },
 
   getSubmissionFiles: async (submissionId: string) => {
-    return apiFetch(`/files/submission/${submissionId}`);
+    return apiFetch(`/files/submission/${encodeURIComponent(submissionId)}`);
   },
 
   getFileContent: async (fileId: number | string, download = false): Promise<Blob> => {
@@ -187,7 +193,7 @@ export const submissionService = {
   },
 
   deleteFile: async (fileId: string) => {
-    return apiFetch(`/files/${fileId}`, {
+    return apiFetch(`/files/${encodeURIComponent(fileId)}`, {
       method: 'DELETE',
     });
   },
@@ -200,7 +206,7 @@ export const submissionService = {
   },
 
   async getAuthors(submissionId: string) {
-    return apiFetch(`/authors/submission/${submissionId}`);
+    return apiFetch(`/authors/submission/${encodeURIComponent(submissionId)}`);
   },
 
   async deleteAuthor(authorId: number) {
@@ -210,7 +216,7 @@ export const submissionService = {
   },
 
   async finalizeSubmission(submissionId: string) {
-    return apiFetch(`/submissions/${submissionId}/finalize`, {
+    return apiFetch(`/submissions/${encodeURIComponent(submissionId)}/finalize`, {
       method: 'PATCH',
     });
   }

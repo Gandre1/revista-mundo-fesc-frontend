@@ -46,10 +46,24 @@ export async function apiFetch<T>(
     headers,
   });
 
-  const data = await response.json();
+  const responseText = await response.text();
+  let data: unknown;
+
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      if (response.ok) {
+        throw new Error('El servidor devolvió una respuesta no válida.');
+      }
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(data.message || 'Error en la petición al servidor');
+    const message = data && typeof data === 'object' && 'message' in data
+      ? String(data.message)
+      : `Error HTTP ${response.status}: ${response.statusText || 'Error en la petición al servidor'}`;
+    throw new Error(message);
   }
 
   return data as T;
