@@ -11,10 +11,19 @@ const STATUS_OPTIONS = [
   'Nuevo',
   'enviado',
   'en_revision',
-  'revisiones_requeridas',
+  'evaluado',
   'aceptado',
   'rechazado',
+  'revisiones_requeridas',
   'publicado',
+];
+const STATUS_FILTERS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'enviado', label: 'Enviado' },
+  { value: 'en_revision', label: 'En Revisión' },
+  { value: 'evaluado', label: 'Evaluado' },
+  { value: 'aceptado', label: 'Aceptado' },
+  { value: 'rechazado', label: 'Rechazado' },
 ];
 
 interface SubmissionsManagementProps {
@@ -26,7 +35,7 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [editors, setEditors] = useState<EditorSummary[]>([]);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [savingSubmissionId, setSavingSubmissionId] = useState<string | null>(null);
@@ -50,10 +59,12 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
     const matchesSearch =
       !query ||
       submission.titulo.toLocaleLowerCase().includes(query) ||
-      submission.seccion?.toLocaleLowerCase().includes(query) ||
-      submission.id.toLocaleLowerCase().includes(query);
+      submission.autor_nombre.toLocaleLowerCase().includes(query);
 
-    return matchesSearch && (!statusFilter || submission.estado === statusFilter);
+    return matchesSearch && (
+      statusFilter === 'all' ||
+      getStatusCategory(submission.estado) === statusFilter
+    );
   });
 
   const statuses = [...new Set([...STATUS_OPTIONS, ...submissions.map((submission) => submission.estado)])];
@@ -101,21 +112,22 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por título, sección o ID..."
+              placeholder="Buscar por título o autor..."
+              aria-label="Buscar por título o nombre del autor"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded focus:outline-none transition-all text-sm"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition-all text-sm"
             />
           </div>
           <div className="w-full md:w-64">
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none transition-all text-sm"
+              aria-label="Filtrar envíos por estado"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition-all text-sm"
             >
-              <option value="">Todos los estados</option>
-              {statuses.map((status) => (
-                <option key={status} value={status}>{formatStatus(status)}</option>
+              {STATUS_FILTERS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
               ))}
             </select>
           </div>
@@ -141,13 +153,11 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Título</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Sección</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Fecha</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Autor principal</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Fecha de envío</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Estado</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Editor</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Archivos / coautores</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Editor asignado</th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
@@ -157,10 +167,7 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
 
                   return (
                     <tr key={submission.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-xs font-mono" style={{ color: FESC_GRAY }}>{submission.id}</span>
-                      </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 min-w-64">
                         <button
                           type="button"
                           onClick={() => openSubmission(submission.id)}
@@ -169,27 +176,33 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                         >
                           {submission.titulo || 'Sin título'}
                         </button>
+                        <p className="mt-1 text-xs font-mono" style={{ color: FESC_GRAY }}>
+                          ID: {submission.id}
+                        </p>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {submission.seccion || 'Sin sección'}
+                      <td className="px-6 py-4 text-sm text-gray-700 min-w-48">
+                        {submission.autor_nombre || 'Autor no disponible'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">
                         {formatDate(submittedDate)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <select
-                          value={submission.estado}
-                          onChange={(event) => void updateEditorialField(submission.id, { estado: event.target.value })}
-                          disabled={savingSubmissionId !== null}
-                          className="text-xs px-2 py-1 rounded border border-gray-300 bg-white disabled:opacity-50"
-                          aria-label={`Cambiar estado de ${submission.titulo}`}
-                        >
-                          {statuses.map((status) => (
-                            <option key={status} value={status}>
-                              {submission.borrador && status === submission.estado ? 'Borrador' : formatStatus(status)}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-medium ${statusColor(submission.borrador ? 'borrador' : submission.estado)}`}>
+                            {submission.borrador ? 'Borrador' : formatStatus(submission.estado)}
+                          </span>
+                          <select
+                            value={submission.estado}
+                            onChange={(event) => void updateEditorialField(submission.id, { estado: event.target.value })}
+                            disabled={savingSubmissionId !== null}
+                            className="max-w-32 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-50"
+                            aria-label={`Cambiar estado de ${submission.titulo}`}
+                          >
+                            {statuses.map((status) => (
+                              <option key={status} value={status}>{formatStatus(status)}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <select
@@ -210,18 +223,16 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                           ))}
                         </select>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-xs text-gray-600">
-                        {submission.total_archivos} / {submission.total_autores}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <button
                           type="button"
                           onClick={() => openSubmission(submission.id)}
-                          className="p-1 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver detalles"
-                          aria-label={`Ver detalles de ${submission.titulo}`}
+                          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
+                          style={{ backgroundColor: FESC_DARK_RED }}
+                          aria-label={`Ver detalle y gestionar ${submission.titulo}`}
                         >
-                          <Eye className="w-4 h-4" style={{ color: FESC_GRAY }} />
+                          <Eye className="w-4 h-4" />
+                          Ver Detalle / Gestionar
                         </button>
                       </td>
                     </tr>
@@ -252,6 +263,8 @@ function formatStatus(status: string): string {
     submitted: 'Enviado',
     en_revision: 'En revisión',
     under_review: 'En revisión',
+    evaluado: 'Evaluado',
+    evaluated: 'Evaluado',
     revisiones_requeridas: 'Revisiones requeridas',
     revisions_required: 'Revisiones requeridas',
     aceptado: 'Aceptado',
@@ -263,6 +276,38 @@ function formatStatus(status: string): string {
   };
 
   return labels[normalized] || status;
+}
+
+function getStatusCategory(status: string): string {
+  const normalized = status.trim().toLocaleLowerCase().replace(/[\s-]+/g, '_');
+  const categories: Record<string, string> = {
+    enviado: 'enviado',
+    submitted: 'enviado',
+    en_revision: 'en_revision',
+    under_review: 'en_revision',
+    evaluado: 'evaluado',
+    evaluated: 'evaluado',
+    aceptado: 'aceptado',
+    accepted: 'aceptado',
+    rechazado: 'rechazado',
+    rejected: 'rechazado',
+  };
+
+  return categories[normalized] || normalized;
+}
+
+function statusColor(status: string): string {
+  const category = getStatusCategory(status);
+  const colors: Record<string, string> = {
+    enviado: 'bg-blue-100 text-blue-800',
+    en_revision: 'bg-amber-100 text-amber-800',
+    evaluado: 'bg-violet-100 text-violet-800',
+    aceptado: 'bg-green-100 text-green-800',
+    rechazado: 'bg-red-100 text-red-800',
+    borrador: 'bg-gray-100 text-gray-700',
+  };
+
+  return colors[category] || 'bg-gray-100 text-gray-700';
 }
 
 function formatDate(value: string | null): string {
