@@ -50,12 +50,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Mobile header */}
       <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+        <Link
+          to="/admin/dashboard"
+          aria-label="Ir al inicio del panel de administración"
+          className="flex items-center gap-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          onClick={() => setSidebarOpen(false)}
+        >
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: FESC_RED }}>
             <BookOpen className="w-5 h-5 text-white" />
           </div>
           <span className="text-gray-900 text-sm font-medium">Revista Mundo FESC</span>
-        </div>
+        </Link>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center"
@@ -75,7 +80,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       {/* Sidebar */}
       <aside className={`fixed left-0 top-0 h-screen w-72 bg-gray-50 border-r border-gray-200 z-50 transition-transform lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-gray-200 bg-white">
-          <div className="flex items-center gap-3">
+          <Link
+            to="/admin/dashboard"
+            aria-label="Ir al inicio del panel de administración"
+            className="flex items-center gap-3 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            onClick={() => setSidebarOpen(false)}
+          >
             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: FESC_RED }}>
               <BookOpen className="w-6 h-6 text-white" />
             </div>
@@ -83,7 +93,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <h2 className="text-gray-900 text-base leading-tight font-semibold">Mundo FESC</h2>
               <p className="text-xs text-gray-500">{i18n.t('layout.adminPanel')}</p>
             </div>
-          </div>
+          </Link>
         </div>
 
         <nav className="flex-1 p-4 space-y-6 overflow-y-auto h-[calc(100vh-240px)]">

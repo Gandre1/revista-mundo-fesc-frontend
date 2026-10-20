@@ -1,29 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Search, Eye } from 'lucide-react';
+import { toast } from 'sonner';
 import { useSubmissions } from './submission-context';
 import { EditorSummary, submissionService } from '../../services/submissionService';
+import {
+  getSubmissionStatusBadgeClass,
+  getSubmissionStatusLabel,
+  normalizeSubmissionStatus,
+  SUBMISSION_STATUSES,
+} from '../lib/submission-status';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
-const STATUS_OPTIONS = [
-  'Nuevo',
-  'enviado',
-  'en_revision',
-  'evaluado',
-  'aceptado',
-  'rechazado',
-  'revisiones_requeridas',
-  'publicado',
-];
 const STATUS_FILTERS = [
   { value: 'all', label: 'Todos' },
   { value: 'enviado', label: 'Enviado' },
-  { value: 'en_revision', label: 'En Revisión' },
+  { value: 'en_revision', label: 'En revisión' },
+  { value: 'revisiones_requeridas', label: 'Ajustes solicitados' },
   { value: 'evaluado', label: 'Evaluado' },
   { value: 'aceptado', label: 'Aceptado' },
   { value: 'rechazado', label: 'Rechazado' },
+  { value: 'publicado', label: 'Publicado' },
 ];
 
 interface SubmissionsManagementProps {
@@ -63,24 +62,26 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
 
     return matchesSearch && (
       statusFilter === 'all' ||
-      getStatusCategory(submission.estado) === statusFilter
+      normalizeSubmissionStatus(submission.estado) === statusFilter
     );
   });
 
-  const statuses = [...new Set([...STATUS_OPTIONS, ...submissions.map((submission) => submission.estado)])];
-
-  const updateEditorialField = async (
+  const saveSubmissionChange = async (
     id: string,
-    data: { estado?: string; editor_id?: string | null }
+    save: () => Promise<unknown>,
+    successMessage: string
   ) => {
     setSavingSubmissionId(id);
     setActionError(null);
     try {
-      await submissionService.updateEditorialFields(id, data);
+      await save();
       await refreshSubmissions();
+      toast.success(successMessage);
     } catch (cause) {
       console.error(`Error al guardar cambios editoriales del envío ${id}:`, cause);
-      setActionError(cause instanceof Error ? cause.message : 'No fue posible guardar el cambio.');
+      const message = cause instanceof Error ? cause.message : 'No fue posible guardar el cambio.';
+      setActionError(message);
+      toast.error(message);
     } finally {
       setSavingSubmissionId(null);
     }
@@ -188,18 +189,25 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-medium ${statusColor(submission.borrador ? 'borrador' : submission.estado)}`}>
-                            {submission.borrador ? 'Borrador' : formatStatus(submission.estado)}
+                          <span className={`inline-flex w-32 shrink-0 justify-center rounded-full px-2 py-1.5 text-xs font-medium ${getSubmissionStatusBadgeClass(submission.borrador ? 'borrador' : submission.estado)}`}>
+                            {submission.borrador ? 'Borrador' : getSubmissionStatusLabel(submission.estado)}
                           </span>
                           <select
-                            value={submission.estado}
-                            onChange={(event) => void updateEditorialField(submission.id, { estado: event.target.value })}
+                            value={normalizeSubmissionStatus(submission.estado)}
+                            onChange={(event) => void saveSubmissionChange(
+                              submission.id,
+                              () => submissionService.updateSubmissionStatus(submission.id, event.target.value),
+                              'Estado del envío actualizado.'
+                            )}
                             disabled={savingSubmissionId !== null}
-                            className="max-w-32 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-50"
+                            title="En revisión: un evaluador está trabajando en el artículo. Ajustes solicitados: el autor debe corregirlo y volver a enviarlo."
+                            className="w-52 shrink-0 rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-50"
                             aria-label={`Cambiar estado de ${submission.titulo}`}
                           >
-                            {statuses.map((status) => (
-                              <option key={status} value={status}>{formatStatus(status)}</option>
+                            {SUBMISSION_STATUSES.map(({ value, label }) => (
+                              <option key={value} value={value}>
+                                {value === 'revisiones_requeridas' ? 'Ajustes solicitados (autor)' : label}
+                              </option>
                             ))}
                           </select>
                         </div>
@@ -207,12 +215,13 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                       <td className="px-6 py-4 whitespace-nowrap">
                         <select
                           value={submission.editor_id || ''}
-                          onChange={(event) => void updateEditorialField(
+                          onChange={(event) => void saveSubmissionChange(
                             submission.id,
-                            { editor_id: event.target.value || null }
+                            () => submissionService.assignEditor(submission.id, event.target.value || null),
+                            'Editor asignado correctamente.'
                           )}
                           disabled={savingSubmissionId !== null || Boolean(editorError)}
-                          className="text-xs px-2 py-1 border border-gray-300 rounded bg-white max-w-44 disabled:opacity-50"
+                          className="w-44 shrink-0 text-xs px-2 py-1.5 border border-gray-300 rounded bg-white disabled:opacity-50"
                           aria-label={`Asignar editor a ${submission.titulo}`}
                         >
                           <option value="">Sin asignar</option>
@@ -253,61 +262,6 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
       </div>
     </div>
   );
-}
-
-function formatStatus(status: string): string {
-  const normalized = status.toLocaleLowerCase();
-  const labels: Record<string, string> = {
-    nuevo: 'Nuevo',
-    enviado: 'Enviado',
-    submitted: 'Enviado',
-    en_revision: 'En revisión',
-    under_review: 'En revisión',
-    evaluado: 'Evaluado',
-    evaluated: 'Evaluado',
-    revisiones_requeridas: 'Revisiones requeridas',
-    revisions_required: 'Revisiones requeridas',
-    aceptado: 'Aceptado',
-    accepted: 'Aceptado',
-    rechazado: 'Rechazado',
-    rejected: 'Rechazado',
-    publicado: 'Publicado',
-    published: 'Publicado',
-  };
-
-  return labels[normalized] || status;
-}
-
-function getStatusCategory(status: string): string {
-  const normalized = status.trim().toLocaleLowerCase().replace(/[\s-]+/g, '_');
-  const categories: Record<string, string> = {
-    enviado: 'enviado',
-    submitted: 'enviado',
-    en_revision: 'en_revision',
-    under_review: 'en_revision',
-    evaluado: 'evaluado',
-    evaluated: 'evaluado',
-    aceptado: 'aceptado',
-    accepted: 'aceptado',
-    rechazado: 'rechazado',
-    rejected: 'rechazado',
-  };
-
-  return categories[normalized] || normalized;
-}
-
-function statusColor(status: string): string {
-  const category = getStatusCategory(status);
-  const colors: Record<string, string> = {
-    enviado: 'bg-blue-100 text-blue-800',
-    en_revision: 'bg-amber-100 text-amber-800',
-    evaluado: 'bg-violet-100 text-violet-800',
-    aceptado: 'bg-green-100 text-green-800',
-    rechazado: 'bg-red-100 text-red-800',
-    borrador: 'bg-gray-100 text-gray-700',
-  };
-
-  return colors[category] || 'bg-gray-100 text-gray-700';
 }
 
 function formatDate(value: string | null): string {

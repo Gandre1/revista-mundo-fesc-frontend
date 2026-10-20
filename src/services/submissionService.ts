@@ -48,6 +48,21 @@ export interface EditorSummary {
   email: string;
 }
 
+export interface ReviewerSummary {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  email: string;
+}
+
+export interface SubmissionReview {
+  id: string | number;
+  reviewer_id: string;
+  reviewer_nombre: string;
+  fecha_limite: string | null;
+  estado?: string | null;
+}
+
 export interface SubmissionFile {
   id: number | string;
   nombre_original: string;
@@ -84,6 +99,7 @@ export interface SubmissionDetail {
   referencias: string | null;
   estado: string;
   status?: string | null;
+  revisores?: SubmissionReview[];
   paso_envio?: number | string | null;
   borrador: boolean | number;
   paso_wizard: number;
@@ -107,8 +123,42 @@ export const submissionService = {
     return apiFetch<{ editors: EditorSummary[] }>('/submissions/editors');
   },
 
+  getReviewers: async () => {
+    return apiFetch<{ reviewers: ReviewerSummary[] }>('/submissions/reviewers');
+  },
+
   getSubmissionById: async (id: string) => {
     return apiFetch<{ submission: SubmissionDetail }>(`/submissions/${encodeURIComponent(id)}`);
+  },
+
+  updateSubmissionStatus: async (id: string, status: string) => {
+    return apiFetch<{ message: string; submissionId: string }>(
+      `/submissions/${encodeURIComponent(id)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ estado: status }),
+      }
+    );
+  },
+
+  assignEditor: async (id: string, editorId: string | null) => {
+    return apiFetch<{ message: string; submissionId: string }>(
+      `/submissions/${encodeURIComponent(id)}/assign-editor`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ editor_id: editorId }),
+      }
+    );
+  },
+
+  assignReviewer: async (id: string, reviewerId: string, deadline: string) => {
+    return apiFetch<{ message: string; submissionId: string }>(
+      `/submissions/${encodeURIComponent(id)}/assign-reviewer`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ reviewer_id: reviewerId, fecha_limite: deadline }),
+      }
+    );
   },
 
   updateEditorialFields: async (

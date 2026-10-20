@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { EditorialSubmission, submissionService } from '../../services/submissionService';
 import { useAuth } from './auth-context';
+import {
+  getSubmissionStatusColor,
+  getSubmissionStatusLabel,
+  normalizeSubmissionStatus,
+} from '../lib/submission-status';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -38,15 +43,16 @@ export function Dashboard() {
     };
   }, []);
 
-  const countStatus = (...statuses: string[]) =>
-    submissions.filter((submission) => statuses.includes(submission.estado.toLocaleLowerCase())).length;
+  const countStatus = (status: string) =>
+    submissions.filter((submission) => normalizeSubmissionStatus(submission.estado) === status).length;
   const stats = {
     totalSubmissions: submissions.length,
-    newSubmissions: countStatus('nuevo', 'enviado'),
-    inReview: countStatus('en_revision', 'under_review'),
-    accepted: countStatus('aceptado', 'accepted'),
-    rejected: countStatus('rechazado', 'rejected'),
-    published: countStatus('publicado', 'published'),
+    newSubmissions: countStatus('nuevo') + countStatus('enviado'),
+    inReview: countStatus('en_revision'),
+    revisionsRequired: countStatus('revisiones_requeridas'),
+    accepted: countStatus('aceptado'),
+    rejected: countStatus('rechazado'),
+    published: countStatus('publicado'),
   };
 
   return (
@@ -119,6 +125,7 @@ export function Dashboard() {
         <div className="space-y-3">
           <StatusBar label="Nuevos" count={stats.newSubmissions} total={stats.totalSubmissions} color="#3b82f6" />
           <StatusBar label="En revisión" count={stats.inReview} total={stats.totalSubmissions} color="#f59e0b" />
+          <StatusBar label="Ajustes solicitados al autor" count={stats.revisionsRequired} total={stats.totalSubmissions} color="#ea580c" />
           <StatusBar label="Aceptados" count={stats.accepted} total={stats.totalSubmissions} color="#10b981" />
           <StatusBar label="Rechazados" count={stats.rejected} total={stats.totalSubmissions} color="#ef4444" />
           <StatusBar label="Publicados" count={stats.published} total={stats.totalSubmissions} color="#8b5cf6" />
@@ -162,11 +169,11 @@ export function Dashboard() {
                       <span
                         className="px-2 py-0.5 rounded text-xs font-medium"
                         style={{
-                          backgroundColor: getStatusColor(submission.estado) + '20',
-                          color: getStatusColor(submission.estado),
+                          backgroundColor: `${getSubmissionStatusColor(submission.estado)}20`,
+                          color: getSubmissionStatusColor(submission.estado),
                         }}
                       >
-                        {submission.estado}
+                        {getSubmissionStatusLabel(submission.estado)}
                       </span>
                     </div>
                     <h3 className="font-medium text-gray-900 mb-1">
@@ -264,30 +271,6 @@ function RecentActivity({ submissions }: { submissions: EditorialSubmission[] })
       ))}
     </div>
   );
-}
-
-function getStatusColor(status: string): string {
-  switch (status.toLocaleLowerCase()) {
-    case 'nuevo':
-    case 'enviado':
-      return '#3b82f6';
-    case 'en_revision':
-    case 'under_review':
-      return '#f59e0b';
-    case 'revisiones_requeridas':
-      return '#f97316';
-    case 'aceptado':
-    case 'accepted':
-      return '#10b981';
-    case 'rechazado':
-    case 'rejected':
-      return '#ef4444';
-    case 'publicado':
-    case 'published':
-      return '#8b5cf6';
-    default:
-      return '#9ca3af';
-  }
 }
 
 function formatDate(value: string | null): string {

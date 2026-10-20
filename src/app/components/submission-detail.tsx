@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  ClipboardList,
   ClipboardCheck,
   Download,
   Eye,
@@ -14,7 +15,13 @@ import {
   Send,
   Users,
 } from 'lucide-react';
-import { submissionService, SubmissionDetail as Submission } from '../../services/submissionService';
+import { toast } from 'sonner';
+import {
+  ReviewerSummary,
+  submissionService,
+  SubmissionDetail as Submission,
+} from '../../services/submissionService';
+import { getSubmissionStatusLabel } from '../lib/submission-status';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -43,6 +50,13 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [fileActionId, setFileActionId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedTimelineStage, setSelectedTimelineStage] = useState<number | null>(null);
+  const [reviewers, setReviewers] = useState<ReviewerSummary[]>([]);
+  const [reviewersLoading, setReviewersLoading] = useState(false);
+  const [reviewersError, setReviewersError] = useState<string | null>(null);
+  const [selectedReviewerId, setSelectedReviewerId] = useState('');
+  const [reviewDeadline, setReviewDeadline] = useState('');
+  const [savingReviewAssignment, setSavingReviewAssignment] = useState(false);
+  const isEditorRoute = location.pathname.startsWith('/editor');
 
   useEffect(() => {
     let active = true;
@@ -78,6 +92,32 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!isEditorRoute) return;
+
+    let active = true;
+    setReviewersLoading(true);
+    setReviewersError(null);
+
+    submissionService.getReviewers()
+      .then(({ reviewers: result }) => {
+        if (active) setReviewers(result);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          console.error('Error al cargar la lista de revisores:', cause);
+          setReviewersError(cause instanceof Error ? cause.message : 'No fue posible cargar los revisores.');
+        }
+      })
+      .finally(() => {
+        if (active) setReviewersLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isEditorRoute]);
 
   const returnToList = () => {
     if (onBack) {
@@ -128,6 +168,28 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       setFileError(cause instanceof Error ? cause.message : 'No fue posible abrir el archivo.');
     } finally {
       setFileActionId(null);
+    }
+  };
+
+  const assignReviewer = async () => {
+    if (!id || !selectedReviewerId || !reviewDeadline) return;
+
+    setSavingReviewAssignment(true);
+    setReviewersError(null);
+    try {
+      await submissionService.assignReviewer(id, selectedReviewerId, reviewDeadline);
+      const { submission: updatedSubmission } = await submissionService.getSubmissionById(id);
+      setSubmission(updatedSubmission);
+      setSelectedReviewerId('');
+      setReviewDeadline('');
+      toast.success('Revisor asignado y fecha límite registrada.');
+    } catch (cause) {
+      console.error(`Error al asignar un revisor al envío ${id}:`, cause);
+      const message = cause instanceof Error ? cause.message : 'No fue posible asignar el revisor.';
+      setReviewersError(message);
+      toast.error(message);
+    } finally {
+      setSavingReviewAssignment(false);
     }
   };
 
@@ -199,7 +261,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             </p>
           </div>
           <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
-            {isDraft ? 'Borrador' : formatStatus(submission.estado)}
+            {isDraft ? 'Borrador' : getSubmissionStatusLabel(submission.estado)}
           </span>
         </div>
       </section>
@@ -214,7 +276,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             className="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap self-start"
             style={{ backgroundColor: isDraft ? '#f3f4f6' : '#fee2e2', color: isDraft ? '#4b5563' : FESC_DARK_RED }}
           >
-            {isDraft ? 'Borrador sin enviar' : formatStatus(submission.estado || submission.status || '')}
+            {isDraft ? 'Borrador sin enviar' : getSubmissionStatusLabel(submission.estado || submission.status)}
           </span>
         </div>
 
@@ -280,7 +342,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           )}
           {isRejectedStatus(submission.estado || submission.status) && visibleTimelineStage === currentTimelineStage && (
             <p className="mt-1 text-xs font-medium text-gray-600">
-              La decisión registrada para este artículo es: {formatStatus(submission.estado || submission.status || '')}.
+              La decisión registrada para este artículo es: {getSubmissionStatusLabel(submission.estado || submission.status)}.
             </p>
           )}
         </div>
@@ -409,6 +471,80 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           {submission.comentarios_editor || 'No hay comentarios editoriales registrados.'}
         </p>
       </section>
+
+      {isEditorRoute && (
+        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
+            Revisores y fechas límite
+          </h2>
+
+          {reviewersError && (
+            <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {reviewersError}
+            </p>
+          )}
+
+          {(submission.revisores?.length ?? 0) > 0 ? (
+            <div className="mb-5 space-y-2">
+              {submission.revisores?.map((review) => (
+                <div key={review.id} className="flex flex-col gap-1 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{review.reviewer_nombre}</p>
+                    <p className="text-xs text-gray-500">{review.estado || 'Revisión asignada'}</p>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Fecha límite: <strong>{formatDate(review.fecha_limite)}</strong>
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-5 text-sm text-gray-500">Todavía no hay revisores asignados a este envío.</p>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+            <label className="block text-sm font-medium text-gray-700">
+              Revisor / evaluador
+              <select
+                value={selectedReviewerId}
+                onChange={(event) => setSelectedReviewerId(event.target.value)}
+                disabled={reviewersLoading || reviewers.length === 0 || savingReviewAssignment}
+                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <option value="">
+                  {reviewersLoading ? 'Cargando revisores...' : 'Seleccionar revisor'}
+                </option>
+                {reviewers.map((reviewer) => (
+                  <option key={reviewer.id} value={reviewer.id}>
+                    {[reviewer.nombre, reviewer.apellidos].filter(Boolean).join(' ')} · {reviewer.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Fecha límite de revisión
+              <input
+                type="date"
+                value={reviewDeadline}
+                onChange={(event) => setReviewDeadline(event.target.value)}
+                disabled={savingReviewAssignment}
+                min={new Date().toISOString().slice(0, 10)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void assignReviewer()}
+              disabled={!selectedReviewerId || !reviewDeadline || savingReviewAssignment || reviewersLoading}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: FESC_DARK_RED }}
+            >
+              {savingReviewAssignment ? 'Asignando...' : 'Asignar revisor'}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -420,25 +556,6 @@ function DetailField({ label, value }: { label: string; value: string | null }) 
       <p className="text-gray-700 whitespace-pre-line">{value || 'No registrado'}</p>
     </div>
   );
-}
-
-function formatStatus(status: string): string {
-  const labels: Record<string, string> = {
-    nuevo: 'Nuevo',
-    enviado: 'Enviado',
-    en_revision: 'En revisión',
-    revisiones_requeridas: 'Revisiones requeridas',
-    revisions_required: 'Revisiones requeridas',
-    aceptado: 'Aceptado',
-    accepted: 'Aceptado',
-    rechazado: 'Rechazado',
-    rejected: 'Rechazado',
-    publicado: 'Publicado',
-    published: 'Publicado',
-    submitted: 'Enviado',
-    under_review: 'En revisión',
-  };
-  return labels[status.toLocaleLowerCase()] || status || 'Sin estado';
 }
 
 function getEditorialStageIndex(status: string | null | undefined, pasoEnvio: number | string | null | undefined): number {

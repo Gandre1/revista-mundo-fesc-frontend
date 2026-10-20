@@ -2,6 +2,11 @@ import { CheckCircle, Clock, Download, Eye, FileText, Trash2, XCircle } from 'lu
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { submissionService } from '../../services/submissionService';
+import {
+  getSubmissionStatusColor,
+  getSubmissionStatusLabel,
+  normalizeSubmissionStatus,
+} from '../lib/submission-status';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -52,9 +57,10 @@ export function DashboardAutor() {
   const stats = {
     total: submissions.length,
     borradores: submissions.filter(isDraft).length,
-    enRevision: submissions.filter(s => s.estado === 'En revisión' || s.estado === 'en_revision' || s.estado === 'recibido').length,
-    aceptados: submissions.filter(s => s.estado === 'Aceptado' || s.estado === 'aceptado' || s.estado === 'publicado').length,
-    rechazados: submissions.filter(s => s.estado === 'Rechazado' || s.estado === 'rechazado').length,
+    enRevision: submissions.filter(s => normalizeSubmissionStatus(s.estado) === 'en_revision').length,
+    ajustesSolicitados: submissions.filter(s => normalizeSubmissionStatus(s.estado) === 'revisiones_requeridas').length,
+    aceptados: submissions.filter(s => ['aceptado', 'publicado'].includes(normalizeSubmissionStatus(s.estado))).length,
+    rechazados: submissions.filter(s => normalizeSubmissionStatus(s.estado) === 'rechazado').length,
   };
 
   // Obtener envíos recientes (últimos 5)
@@ -81,7 +87,7 @@ export function DashboardAutor() {
       </div>
 
       {/* Tarjetas de métricas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <MetricCard
           icon={<FileText className="w-6 h-6" />}
           title="Total"
@@ -93,7 +99,14 @@ export function DashboardAutor() {
           icon={<Clock className="w-6 h-6" />}
           title="En revisión"
           value={stats.enRevision}
-          subtitle="Pendientes"
+          subtitle="En evaluación"
+          color="#d97706"
+        />
+        <MetricCard
+          icon={<Clock className="w-6 h-6" />}
+          title="Ajustes solicitados"
+          value={stats.ajustesSolicitados}
+          subtitle="Requieren acción del autor"
           color="#f59e0b"
         />
         <MetricCard
@@ -174,11 +187,11 @@ export function DashboardAutor() {
                     <span
                       className="px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap"
                       style={{
-                        backgroundColor: getStatusColor(submission.estado) + '20',
-                        color: getStatusColor(submission.estado),
+                        backgroundColor: `${getSubmissionStatusColor(isDraft(submission) ? 'borrador' : submission.estado)}20`,
+                        color: getSubmissionStatusColor(isDraft(submission) ? 'borrador' : submission.estado),
                       }}
                     >
-                      {getStatusLabel(submission.estado)}
+                      {getSubmissionStatusLabel(isDraft(submission) ? 'borrador' : submission.estado)}
                     </span>
                   </Link>
                   <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
@@ -343,21 +356,4 @@ function MetricCard({ icon, title, value, subtitle, color }: {
       </div>
     </div>
   );
-}
-
-function getStatusColor(status: string): string {
-  const normalized = (status || '').toLowerCase();
-  if (normalized.includes('revision') || normalized.includes('evaluacion')) return '#f59e0b';
-  if (normalized.includes('aceptado') || normalized.includes('aprobado')) return '#10b981';
-  if (normalized.includes('rechazado')) return '#ef4444';
-  if (normalized.includes('publicado')) return '#8b5cf6';
-  if (normalized.includes('nuevo') || normalized.includes('recibido')) return '#0891b2';
-  return '#6b7280';
-}
-
-function getStatusLabel(status: string): string {
-  if (!status) return 'Enviado';
-  if (['borrador', 'draft'].includes(status.toLocaleLowerCase())) return 'Borrador';
-  if (status.toLocaleLowerCase() === 'en_revision') return 'En revisión';
-  return status;
 }

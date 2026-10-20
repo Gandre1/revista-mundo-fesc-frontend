@@ -27,7 +27,7 @@ export const translations: Translations = {
   // Estados
   'status.new': { es: 'Nuevo', en: 'New' },
   'status.inReview': { es: 'En revisión', en: 'In Review' },
-  'status.revisionsRequired': { es: 'Revisiones requeridas', en: 'Revisions Required' },
+  'status.revisionsRequired': { es: 'Ajustes solicitados', en: 'Revisions requested' },
   'status.accepted': { es: 'Aceptado', en: 'Accepted' },
   'status.rejected': { es: 'Rechazado', en: 'Rejected' },
   'status.published': { es: 'Publicado', en: 'Published' },
