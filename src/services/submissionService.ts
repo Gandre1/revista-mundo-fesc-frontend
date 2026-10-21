@@ -131,12 +131,15 @@ export const submissionService = {
     return apiFetch<{ submission: SubmissionDetail }>(`/submissions/${encodeURIComponent(id)}`);
   },
 
-  updateSubmissionStatus: async (id: string, status: string) => {
+  updateSubmissionStatus: async (id: string, status: string, comentariosEditor?: string) => {
     return apiFetch<{ message: string; submissionId: string }>(
       `/submissions/${encodeURIComponent(id)}/status`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ estado: status }),
+        body: JSON.stringify({
+          estado: status,
+          ...(comentariosEditor ? { comentarios_editor: comentariosEditor } : {}),
+        }),
       }
     );
   },

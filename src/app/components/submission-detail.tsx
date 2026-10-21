@@ -13,6 +13,9 @@ import {
   Paperclip,
   Scale,
   Send,
+  CheckCircle,
+  MessageSquareText,
+  ThumbsDown,
   Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,10 +24,29 @@ import {
   submissionService,
   SubmissionDetail as Submission,
 } from '../../services/submissionService';
-import { getSubmissionStatusLabel } from '../lib/submission-status';
+import {
+  getSubmissionStatusLabel,
+  normalizeSubmissionStatus,
+} from '../lib/submission-status';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
+import { Textarea } from './ui/textarea';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
+
+const EDITORIAL_DECISIONS = [
+  { status: 'en_revision', label: 'Aprobar para evaluación', Icon: ClipboardCheck, color: '#1d4ed8' },
+  { status: 'revisiones_requeridas', label: 'Solicitar correcciones', Icon: MessageSquareText, color: '#c2410c' },
+  { status: 'aceptado', label: 'Aceptar artículo', Icon: CheckCircle, color: '#15803d' },
+  { status: 'rechazado', label: 'Rechazar artículo', Icon: ThumbsDown, color: '#b91c1c' },
+] as const;
 
 const EDITORIAL_STAGES = [
   { label: 'Enviado', description: 'El artículo fue recibido por la revista.', Icon: Send },
@@ -56,6 +78,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [selectedReviewerId, setSelectedReviewerId] = useState('');
   const [reviewDeadline, setReviewDeadline] = useState('');
   const [savingReviewAssignment, setSavingReviewAssignment] = useState(false);
+  const [selectedDecision, setSelectedDecision] = useState<(typeof EDITORIAL_DECISIONS)[number] | null>(null);
+  const [editorialComment, setEditorialComment] = useState('');
+  const [savingDecision, setSavingDecision] = useState(false);
   const isEditorRoute = location.pathname.startsWith('/editor');
 
   useEffect(() => {
@@ -190,6 +215,37 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       toast.error(message);
     } finally {
       setSavingReviewAssignment(false);
+    }
+  };
+
+  const confirmEditorialDecision = async () => {
+    if (!id || !submission || !selectedDecision || savingDecision) return;
+
+    const previousStatus = submission.estado;
+    const previousComment = submission.comentarios_editor;
+    const comment = editorialComment.trim();
+    setSavingDecision(true);
+    setSubmission({
+      ...submission,
+      estado: selectedDecision.status,
+      ...(comment ? { comentarios_editor: comment } : {}),
+    });
+
+    try {
+      await submissionService.updateSubmissionStatus(id, selectedDecision.status, comment || undefined);
+      toast.success(`Estado actualizado: ${selectedDecision.label}.`);
+      setSelectedDecision(null);
+      setEditorialComment('');
+    } catch (cause) {
+      console.error(`Error al registrar la decisión editorial para el envío ${id}:`, cause);
+      setSubmission({
+        ...submission,
+        estado: previousStatus,
+        comentarios_editor: previousComment,
+      });
+      toast.error(cause instanceof Error ? cause.message : 'No fue posible registrar la decisión editorial.');
+    } finally {
+      setSavingDecision(false);
     }
   };
 
@@ -351,6 +407,45 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           {isDraft ? 'Fecha de envío: pendiente' : `Fecha de envío: ${formatDate(submission.fecha_envio)}`}
         </p>
       </section>
+
+      {isEditorRoute && (
+        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
+            <Scale className="w-5 h-5" style={{ color: FESC_RED }} />
+            Decisión editorial
+          </h2>
+          <p className="mb-4 text-sm text-gray-600">
+            Registra una decisión para este artículo. Puedes añadir observaciones para el autor.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {EDITORIAL_DECISIONS.map(({ status, label, Icon, color }) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => {
+                  setEditorialComment('');
+                  setSelectedDecision(EDITORIAL_DECISIONS.find((decision) => decision.status === status) ?? null);
+                }}
+                disabled={
+                  isDraft ||
+                  savingDecision ||
+                  normalizeSubmissionStatus(submission.estado || submission.status) === status
+                }
+                className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: color }}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {isDraft && (
+            <p className="mt-3 text-sm text-gray-500">
+              Las decisiones editoriales estarán disponibles cuando el artículo haya sido enviado.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
@@ -545,6 +640,53 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           </div>
         </section>
       )}
+
+      <AlertDialog
+        open={selectedDecision !== null}
+        onOpenChange={(open) => {
+          if (!open && !savingDecision) setSelectedDecision(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{selectedDecision?.label}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción actualizará el estado editorial de “{submission.titulo || 'este artículo'}”.
+              {selectedDecision?.status === 'rechazado' && ' La decisión de rechazo quedará registrada.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <label className="space-y-2 text-sm font-medium text-gray-700">
+            Observaciones para el autor (opcional)
+            <Textarea
+              value={editorialComment}
+              onChange={(event) => setEditorialComment(event.target.value)}
+              disabled={savingDecision}
+              maxLength={5000}
+              placeholder="Escribe las observaciones editoriales..."
+              className="min-h-28"
+            />
+          </label>
+          <AlertDialogFooter>
+            <button
+              type="button"
+              onClick={() => setSelectedDecision(null)}
+              disabled={savingDecision}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmEditorialDecision()}
+              disabled={savingDecision}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: FESC_DARK_RED }}
+            >
+              {savingDecision ? 'Guardando...' : 'Confirmar decisión'}
+            </button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
