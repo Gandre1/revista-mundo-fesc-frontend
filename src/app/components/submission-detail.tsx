@@ -665,17 +665,20 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               >
                 <ZoomIn className="h-4 w-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer');
-                }}
-                disabled={!previewUrl}
-                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              <a
+                href={previewUrl || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Abrir PDF en una pestaña nueva"
+                aria-disabled={!previewUrl}
+                tabIndex={previewUrl ? undefined : -1}
+                className={`inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 ${
+                  previewUrl ? '' : 'pointer-events-none opacity-50'
+                }`}
               >
                 <ExternalLink className="h-4 w-4" />
                 <span className="hidden sm:inline">Abrir en pestaña nueva</span>
-              </button>
+              </a>
               <button
                 type="button"
                 onClick={() => void handleFileDownload(previewFile)}

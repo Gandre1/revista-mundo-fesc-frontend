@@ -226,7 +226,10 @@ export const submissionService = {
     const response = await fetch(
       `${API_URL}/files/${encodeURIComponent(String(fileId))}/content${query}`,
       {
-        headers: getApiAuthHeaders(),
+        headers: {
+          'Bypass-Tunnel-Reminder': 'true',
+          ...getApiAuthHeaders(),
+        },
       }
     );
 
