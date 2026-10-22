@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { Inbox, LogOut, BookOpen, Menu, X, ChevronRight, User, PlusCircle, Mail } from 'lucide-react';
-import { NotificationCenterNew } from './notification-center-new';
+import { NotificationCenter } from './notification-center';
 import { LanguageSelector } from './language-selector';
 import { useAuth } from './auth-context';
 import { i18n } from '../lib/i18n';
@@ -201,7 +201,7 @@ export function AutorLayout({ children }: AutorLayoutProps) {
               </h1>
             </div>
             <div className="flex items-center gap-4">
-              <NotificationCenterNew />
+              <NotificationCenter />
               <LanguageSelector />
               <button
                 onClick={() => navigate('/autor/profile')}

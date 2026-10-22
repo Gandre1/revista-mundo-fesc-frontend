@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft,
@@ -8,8 +8,12 @@ import {
   ClipboardCheck,
   Download,
   Eye,
+  ExternalLink,
   FileText,
   Languages,
+  Loader2,
+  Maximize,
+  Minimize,
   Paperclip,
   Scale,
   Send,
@@ -17,6 +21,8 @@ import {
   MessageSquareText,
   ThumbsDown,
   Users,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -71,6 +77,13 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [error, setError] = useState<string | null>(null);
   const [fileActionId, setFileActionId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<Submission['archivos'][number] | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const previewContainerRef = useRef<HTMLElement>(null);
   const [selectedTimelineStage, setSelectedTimelineStage] = useState<number | null>(null);
   const [reviewers, setReviewers] = useState<ReviewerSummary[]>([]);
   const [reviewersLoading, setReviewersLoading] = useState(false);
@@ -82,6 +95,21 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [editorialComment, setEditorialComment] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
   const isEditorRoute = location.pathname.startsWith('/editor');
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      setIsPreviewFullscreen(document.fullscreenElement === previewContainerRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -160,39 +188,60 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     navigate(basePath);
   };
 
-  const handleFileAction = async (file: Submission['archivos'][number], download: boolean) => {
-    const previewWindow = download ? null : window.open('about:blank', '_blank');
-    if (!download && !previewWindow) {
-      setFileError('El navegador bloqueó la nueva pestaña. Permite las ventanas emergentes e inténtalo de nuevo.');
-      return;
-    }
-
+  const handleFileDownload = async (file: Submission['archivos'][number]) => {
     const actionId = String(file.id);
     setFileActionId(actionId);
     setFileError(null);
 
     try {
-      const blob = await submissionService.getFileContent(file.id, download);
+      const blob = await submissionService.getFileContent(file.id, true);
       const objectUrl = URL.createObjectURL(blob);
-
-      if (download) {
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = file.nombre_original;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      } else if (previewWindow) {
-        previewWindow.location.href = objectUrl;
-      }
-
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = file.nombre_original;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (cause) {
-      previewWindow?.close();
       console.error(`Error al obtener el archivo ${file.id}:`, cause);
-      setFileError(cause instanceof Error ? cause.message : 'No fue posible abrir el archivo.');
+      setFileError(cause instanceof Error ? cause.message : 'No fue posible descargar el archivo.');
     } finally {
       setFileActionId(null);
+    }
+  };
+
+  const handlePreviewFile = async (file: Submission['archivos'][number]) => {
+    setPreviewFile(file);
+    setPreviewUrl(null);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewZoom(100);
+    setFileError(null);
+    setFileActionId(String(file.id));
+
+    try {
+      const blob = await submissionService.getFileContent(file.id);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (cause) {
+      console.error(`Error al cargar el visor del archivo ${file.id}:`, cause);
+      setPreviewLoading(false);
+      setPreviewError(cause instanceof Error ? cause.message : 'No fue posible cargar el archivo PDF.');
+    } finally {
+      setFileActionId(null);
+    }
+  };
+
+  const togglePreviewFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await previewContainerRef.current?.requestFullscreen();
+      }
+    } catch (cause) {
+      console.error('No fue posible cambiar el visor a pantalla completa:', cause);
+      setPreviewError('No fue posible activar la pantalla completa en este navegador.');
     }
   };
 
@@ -526,24 +575,32 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                         {isPdf && (
                           <button
                             type="button"
-                            onClick={() => void handleFileAction(file, false)}
+                            onClick={() => void handlePreviewFile(file)}
                             disabled={fileActionId !== null}
                             className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
-                            title="Ver PDF"
-                            aria-label={`Ver ${file.nombre_original}`}
+                            title="Ver PDF en la página"
+                            aria-label={`Ver ${file.nombre_original} en la página`}
                           >
-                            <Eye className="w-4 h-4 text-gray-600" />
+                            {fileActionId === String(file.id) ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                            ) : (
+                              <Eye className="w-4 h-4 text-gray-600" />
+                            )}
                           </button>
                         )}
                         <button
                           type="button"
-                          onClick={() => void handleFileAction(file, true)}
+                          onClick={() => void handleFileDownload(file)}
                           disabled={fileActionId !== null}
                           className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
                           title="Descargar archivo"
                           aria-label={`Descargar ${file.nombre_original}`}
                         >
-                          <Download className="w-4 h-4 text-gray-600" />
+                          {fileActionId === String(file.id) ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                          ) : (
+                            <Download className="w-4 h-4 text-gray-600" />
+                          )}
                         </button>
                       </div>
                     </div>
@@ -557,6 +614,141 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           )}
         </section>
       </div>
+
+      {previewFile && (
+        <section
+          ref={previewContainerRef}
+          className={`bg-white rounded-lg border border-gray-200 shadow-sm ${
+            isPreviewFullscreen
+              ? 'flex h-screen max-h-screen w-screen flex-col overflow-hidden rounded-none border-0 p-3 sm:p-4'
+              : 'p-4 sm:p-6'
+          }`}
+          aria-label={`Visor de ${previewFile.nombre_original}`}
+        >
+          <div className={`flex flex-col gap-3 border-b pb-3 sm:flex-row sm:items-center sm:justify-between ${
+            isPreviewFullscreen ? 'mb-3 shrink-0' : 'mb-4'
+          }`}>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5 shrink-0" style={{ color: FESC_RED }} />
+                Visor de manuscrito
+              </h2>
+              <p className="mt-1 text-sm text-gray-600 break-all">{previewFile.nombre_original}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewLoading(true);
+                  setPreviewZoom((zoom) => Math.max(50, zoom - 10));
+                }}
+                disabled={!previewUrl || previewZoom <= 50}
+                className="inline-flex items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                aria-label="Reducir zoom"
+                title="Reducir zoom"
+              >
+                <ZoomOut className="h-4 w-4" />
+              </button>
+              <span className="min-w-12 text-center text-sm text-gray-600" aria-live="polite">
+                {previewZoom}%
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewLoading(true);
+                  setPreviewZoom((zoom) => Math.min(200, zoom + 10));
+                }}
+                disabled={!previewUrl || previewZoom >= 200}
+                className="inline-flex items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                aria-label="Aumentar zoom"
+                title="Aumentar zoom"
+              >
+                <ZoomIn className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer');
+                }}
+                disabled={!previewUrl}
+                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span className="hidden sm:inline">Abrir en pestaña nueva</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleFileDownload(previewFile)}
+                disabled={fileActionId !== null}
+                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {fileActionId === String(previewFile.id) ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                <span>Descargar PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void togglePreviewFullscreen()}
+                disabled={!previewUrl}
+                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                aria-label={isPreviewFullscreen ? 'Salir de pantalla completa' : 'Activar pantalla completa'}
+              >
+                {isPreviewFullscreen ? (
+                  <Minimize className="h-4 w-4" />
+                ) : (
+                  <Maximize className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {isPreviewFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+                </span>
+              </button>
+            </div>
+          </div>
+          {previewError ? (
+            <p
+              role="alert"
+              className={`rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 ${
+                isPreviewFullscreen ? 'flex-1' : ''
+              }`}
+            >
+              No se pudo cargar el PDF: {previewError}
+            </p>
+          ) : (
+            <div className={`relative overflow-auto rounded-md bg-gray-100 ${
+              isPreviewFullscreen ? 'min-h-0 flex-1' : 'min-h-[60vh]'
+            }`}>
+              {previewLoading && (
+                <div className={`absolute inset-0 z-10 flex items-center justify-center bg-white/90 ${
+                  isPreviewFullscreen ? '' : 'min-h-[60vh]'
+                }`}>
+                  <div className="flex items-center gap-2 text-sm text-gray-600" role="status">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Cargando documento PDF...
+                  </div>
+                </div>
+              )}
+              {previewUrl && (
+                <iframe
+                  key={`${previewFile.id}-${previewZoom}`}
+                  src={`${previewUrl}#toolbar=1&navpanes=0&zoom=${previewZoom}`}
+                  title={`Documento PDF: ${previewFile.nombre_original}`}
+                  className={`w-full border-0 ${
+                    isPreviewFullscreen ? 'h-full min-h-0' : 'h-[70vh] min-h-[60vh]'
+                  }`}
+                  onLoad={() => setPreviewLoading(false)}
+                  onError={() => {
+                    setPreviewLoading(false);
+                    setPreviewError('El navegador no pudo mostrar el contenido del PDF.');
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">

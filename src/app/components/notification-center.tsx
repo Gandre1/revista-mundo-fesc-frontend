@@ -1,71 +1,62 @@
-import { Bell, X, CheckCircle, AlertTriangle, Info, FileText } from 'lucide-react';
-import { useState } from 'react';
+import { Bell, X, CheckCircle, AlertTriangle, Info, FileText, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { storage } from '../lib/storage';
+import { Link } from 'react-router';
 
 const FESC_RED = '#e30513';
 const FESC_GRAY = '#3c3c3b';
 
-interface Notification {
-  id: string;
-  type: 'success' | 'warning' | 'info' | 'submission';
-  title: string;
-  message: string;
-  time: string;
-  read: boolean;
-}
+const TYPE_ICONS = {
+  success: CheckCircle,
+  warning: AlertTriangle,
+  info: Info,
+  danger: AlertTriangle,
+};
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: '1',
-    type: 'submission',
-    title: 'Nuevo envío recibido',
-    message: 'María González ha enviado un nuevo artículo: "Análisis de tendencias..."',
-    time: 'Hace 5 minutos',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'warning',
-    title: 'Revisión pendiente',
-    message: 'El artículo #2024-015 está esperando revisión desde hace 7 días',
-    time: 'Hace 2 horas',
-    read: false,
-  },
-  {
-    id: '3',
-    type: 'success',
-    title: 'Artículo aceptado',
-    message: 'El artículo #2024-012 ha sido aceptado para publicación',
-    time: 'Hace 1 día',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'info',
-    title: 'Recordatorio',
-    message: 'La fecha límite para la próxima edición es en 15 días',
-    time: 'Hace 2 días',
-    read: true,
-  },
-];
+const TYPE_COLORS = {
+  success: '#10b981',
+  warning: '#f59e0b',
+  info: '#3b82f6',
+  danger: '#ef4444',
+};
 
 export function NotificationCenter() {
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState(storage.getNotifications());
   const [isOpen, setIsOpen] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNotifications(storage.getNotifications());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
+  const unreadCount = storage.getUnreadCount();
+
+  const handleMarkAsRead = (id: string) => {
+    storage.markNotificationAsRead(id);
+    setNotifications(storage.getNotifications());
   };
 
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  const handleMarkAllAsRead = () => {
+    storage.markAllNotificationsAsRead();
+    setNotifications(storage.getNotifications());
   };
 
-  const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+  const handleDelete = (id: string) => {
+    storage.deleteNotification(id);
+    setNotifications(storage.getNotifications());
+  };
+
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return 'Hace unos segundos';
+    if (diffInSeconds < 3600) return `Hace ${Math.floor(diffInSeconds / 60)} minutos`;
+    if (diffInSeconds < 86400) return `Hace ${Math.floor(diffInSeconds / 3600)} horas`;
+    return `Hace ${Math.floor(diffInSeconds / 86400)} días`;
   };
 
   return (
@@ -78,7 +69,7 @@ export function NotificationCenter() {
         <Bell className="w-5 h-5" style={{ color: FESC_GRAY }} />
         {unreadCount > 0 && (
           <span
-            className="absolute top-0 right-0 w-5 h-5 text-xs text-white rounded-full flex items-center justify-center"
+            className="absolute top-0 right-0 w-5 h-5 text-white text-xs font-semibold rounded-full flex items-center justify-center"
             style={{ backgroundColor: FESC_RED }}
           >
             {unreadCount}
@@ -89,114 +80,126 @@ export function NotificationCenter() {
       {/* Dropdown Panel */}
       {isOpen && (
         <>
+          {/* Overlay */}
           <div
             className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+
+          {/* Panel */}
+          <div
+            className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50"
+            style={{ maxHeight: '500px' }}
+          >
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold" style={{ color: FESC_GRAY }}>
-                Notificaciones
+                Notificaciones ({unreadCount})
               </h3>
-              {unreadCount > 0 && (
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllAsRead}
+                    className="text-xs hover:underline"
+                    style={{ color: FESC_RED }}
+                  >
+                    Marcar todas como leídas
+                  </button>
+                )}
                 <button
-                  onClick={markAllAsRead}
-                  className="text-xs hover:underline"
-                  style={{ color: FESC_RED }}
+                  onClick={() => setIsOpen(false)}
+                  className="p-1 hover:bg-gray-100 rounded"
                 >
-                  Marcar todas como leídas
+                  <X className="w-4 h-4 text-gray-500" />
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Notifications List */}
-            <div className="max-h-96 overflow-y-auto">
+            <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
               {notifications.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-500 text-sm">
-                  No hay notificaciones
+                <div className="text-center py-12">
+                  <Bell className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="text-gray-500 text-sm">No hay notificaciones</p>
                 </div>
               ) : (
-                notifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onMarkAsRead={markAsRead}
-                    onDelete={deleteNotification}
-                  />
-                ))
-              )}
-            </div>
+                <div className="divide-y divide-gray-100">
+                  {notifications.map((notification) => {
+                    const Icon = TYPE_ICONS[notification.tipo] || Info;
+                    const iconColor = TYPE_COLORS[notification.tipo] || '#3b82f6';
 
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-gray-200 text-center">
-              <button
-                className="text-sm hover:underline"
-                style={{ color: FESC_RED }}
-              >
-                Ver todas las notificaciones
-              </button>
+                    return (
+                      <div
+                        key={notification.id}
+                        className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
+                          !notification.leida ? 'bg-blue-50/50' : ''
+                        }`}
+                      >
+                        <div className="flex gap-3">
+                          <div
+                            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: `${iconColor}20` }}
+                          >
+                            <Icon className="w-4 h-4" style={{ color: iconColor }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="text-sm font-semibold" style={{ color: FESC_GRAY }}>
+                                {notification.titulo}
+                              </p>
+                              {!notification.leida && (
+                                <span
+                                  className="flex-shrink-0 w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: FESC_RED }}
+                                />
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-600 mb-1">
+                              {notification.mensaje}
+                            </p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-400">
+                                {getTimeAgo(notification.fecha)}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                {notification.submissionId && (
+                                  <Link
+                                    to={`/admin/submissions/${notification.submissionId}`}
+                                    className="text-xs hover:underline"
+                                    style={{ color: FESC_RED }}
+                                    onClick={() => setIsOpen(false)}
+                                  >
+                                    Ver envío
+                                  </Link>
+                                )}
+                                {!notification.leida && (
+                                  <button
+                                    onClick={() => handleMarkAsRead(notification.id)}
+                                    className="text-xs hover:underline"
+                                    style={{ color: FESC_RED }}
+                                  >
+                                    Marcar leída
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDelete(notification.id)}
+                                  className="p-1 hover:bg-red-50 rounded"
+                                >
+                                  <Trash2 className="w-3 h-3 text-red-600" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function NotificationItem({
-  notification,
-  onMarkAsRead,
-  onDelete,
-}: {
-  notification: Notification;
-  onMarkAsRead: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  const getIcon = () => {
-    switch (notification.type) {
-      case 'success':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      case 'info':
-        return <Info className="w-5 h-5 text-blue-500" />;
-      case 'submission':
-        return <FileText className="w-5 h-5" style={{ color: FESC_RED }} />;
-    }
-  };
-
-  return (
-    <div
-      className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-        !notification.read ? 'bg-blue-50' : ''
-      }`}
-      onClick={() => !notification.read && onMarkAsRead(notification.id)}
-    >
-      <div className="flex gap-3">
-        <div className="flex-shrink-0 mt-1">{getIcon()}</div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h4
-              className={`text-sm mb-1 ${!notification.read ? 'font-semibold' : ''}`}
-              style={{ color: FESC_GRAY }}
-            >
-              {notification.title}
-            </h4>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(notification.id);
-              }}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <p className="text-xs text-gray-600 mb-1">{notification.message}</p>
-          <p className="text-xs text-gray-400">{notification.time}</p>
-        </div>
-      </div>
     </div>
   );
 }

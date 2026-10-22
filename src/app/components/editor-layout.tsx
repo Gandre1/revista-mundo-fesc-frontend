@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FileText, LogOut, BookOpen, Menu, X, ChevronRight, User, Mail } from 'lucide-react';
-import { NotificationCenterNew } from './notification-center-new';
+import { NotificationCenter } from './notification-center';
 import { LanguageSelector } from './language-selector';
 import { useAuth } from './auth-context';
 import { i18n } from '../lib/i18n';
@@ -222,7 +222,7 @@ export function EditorLayout({ children }: EditorLayoutProps) {
               </h1>
             </div>
             <div className="flex items-center gap-4">
-              <NotificationCenterNew />
+              <NotificationCenter />
               <LanguageSelector />
               <button
                 onClick={() => navigate('/editor/profile')}
