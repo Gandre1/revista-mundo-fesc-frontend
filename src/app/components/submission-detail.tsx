@@ -222,7 +222,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
 
     try {
       const blob = await submissionService.getFileContent(file.id);
-      setPreviewUrl(URL.createObjectURL(blob));
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+      setPreviewUrl(URL.createObjectURL(pdfBlob));
     } catch (cause) {
       console.error(`Error al cargar el visor del archivo ${file.id}:`, cause);
       setPreviewLoading(false);
