@@ -26,8 +26,9 @@ export async function apiFetch<T>(
 
   // Tipamos explícitamente headers como un objeto Record<string, string>
   const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string>),
-  };
+      'Bypass-Tunnel-Reminder': 'true',
+      ...(options.headers as Record<string, string>),
+    };
 
   // Si no es subida de archivos (FormData), enviamos JSON por defecto
   if (!(options.body instanceof FormData)) {
