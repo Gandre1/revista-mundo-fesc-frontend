@@ -79,6 +79,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [fileError, setFileError] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<Submission['archivos'][number] | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpenUrl, setPreviewOpenUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewZoom, setPreviewZoom] = useState(100);
@@ -214,6 +215,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const handlePreviewFile = async (file: Submission['archivos'][number]) => {
     setPreviewFile(file);
     setPreviewUrl(null);
+    setPreviewOpenUrl(null);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewZoom(100);
@@ -221,9 +223,13 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     setFileActionId(String(file.id));
 
     try {
-      const blob = await submissionService.getFileContent(file.id);
+      const [blob, openUrl] = await Promise.all([
+        submissionService.getFileContent(file.id),
+        submissionService.getFilePreviewUrl(file.id),
+      ]);
       const pdfBlob = new Blob([blob], { type: 'application/pdf' });
       setPreviewUrl(URL.createObjectURL(pdfBlob));
+      setPreviewOpenUrl(openUrl);
     } catch (cause) {
       console.error(`Error al cargar el visor del archivo ${file.id}:`, cause);
       setPreviewLoading(false);
@@ -667,14 +673,14 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 <ZoomIn className="h-4 w-4" />
               </button>
               <a
-                href={previewUrl || undefined}
+                href={previewOpenUrl || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Abrir PDF en una pestaña nueva"
-                aria-disabled={!previewUrl}
-                tabIndex={previewUrl ? undefined : -1}
+                aria-disabled={!previewOpenUrl}
+                tabIndex={previewOpenUrl ? undefined : -1}
                 className={`inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 ${
-                  previewUrl ? '' : 'pointer-events-none opacity-50'
+                  previewOpenUrl ? '' : 'pointer-events-none opacity-50'
                 }`}
               >
                 <ExternalLink className="h-4 w-4" />

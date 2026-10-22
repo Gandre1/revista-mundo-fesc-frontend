@@ -221,6 +221,20 @@ export const submissionService = {
     return apiFetch(`/files/submission/${encodeURIComponent(submissionId)}`);
   },
 
+  getFilePreviewUrl: async (fileId: number | string): Promise<string> => {
+    const result = await apiFetch<{ token: string }>(
+      `/files/${encodeURIComponent(String(fileId))}/preview-token`
+    );
+    const encodedId = encodeURIComponent(String(fileId));
+    const query = `token=${encodeURIComponent(result.token)}`;
+
+    if (import.meta.env.PROD) {
+      return `/api/pdf-preview/${encodedId}?${query}`;
+    }
+
+    return `${API_URL}/files/${encodedId}/preview?${query}`;
+  },
+
   getFileContent: async (fileId: number | string, download = false): Promise<Blob> => {
     const query = download ? '?download=1' : '';
     const response = await fetch(
