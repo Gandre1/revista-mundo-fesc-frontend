@@ -650,13 +650,13 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                   setPreviewZoom((zoom) => Math.max(50, zoom - 10));
                 }}
                 disabled={!previewUrl || previewZoom <= 50}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="hidden items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:inline-flex"
                 aria-label="Reducir zoom"
                 title="Reducir zoom"
               >
                 <ZoomOut className="h-4 w-4" />
               </button>
-              <span className="min-w-12 text-center text-sm text-gray-600" aria-live="polite">
+              <span className="hidden min-w-12 text-center text-sm text-gray-600 sm:inline" aria-live="polite">
                 {previewZoom}%
               </span>
               <button
@@ -666,7 +666,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                   setPreviewZoom((zoom) => Math.min(200, zoom + 10));
                 }}
                 disabled={!previewUrl || previewZoom >= 200}
-                className="inline-flex items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="hidden items-center gap-1 rounded border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:inline-flex"
                 aria-label="Aumentar zoom"
                 title="Aumentar zoom"
               >
@@ -679,18 +679,21 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 aria-label="Abrir PDF en una pestaña nueva"
                 aria-disabled={!previewOpenUrl}
                 tabIndex={previewOpenUrl ? undefined : -1}
-                className={`inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 ${
-                  previewOpenUrl ? '' : 'pointer-events-none opacity-50'
+                className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded border px-4 py-3 text-base font-semibold shadow-sm sm:w-auto sm:min-h-0 sm:px-3 sm:py-2 sm:text-sm sm:font-normal sm:shadow-none ${
+                  previewOpenUrl
+                    ? 'border-blue-700 bg-blue-700 text-white hover:bg-blue-800 sm:border-gray-300 sm:bg-white sm:text-gray-700 sm:hover:bg-gray-50'
+                    : 'pointer-events-none border-gray-300 bg-blue-700 text-white opacity-50 sm:bg-white sm:text-gray-700'
                 }`}
               >
                 <ExternalLink className="h-4 w-4" />
+                <span className="sm:hidden">Abrir PDF</span>
                 <span className="hidden sm:inline">Abrir en pestaña nueva</span>
               </a>
               <button
                 type="button"
                 onClick={() => void handleFileDownload(previewFile)}
                 disabled={fileActionId !== null}
-                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded border border-gray-300 bg-white px-4 py-3 text-base font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:w-auto sm:min-h-0 sm:px-3 sm:py-2 sm:text-sm sm:font-normal"
               >
                 {fileActionId === String(previewFile.id) ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -703,7 +706,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 type="button"
                 onClick={() => void togglePreviewFullscreen()}
                 disabled={!previewUrl}
-                className="inline-flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="hidden items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:inline-flex"
                 aria-label={isPreviewFullscreen ? 'Salir de pantalla completa' : 'Activar pantalla completa'}
               >
                 {isPreviewFullscreen ? (
@@ -716,6 +719,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 </span>
               </button>
             </div>
+            <p className="text-sm text-gray-600 sm:hidden">
+              Abre el PDF en una pestaña nueva para verlo en tu teléfono.
+            </p>
           </div>
           {previewError ? (
             <p
@@ -727,7 +733,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               No se pudo cargar el PDF: {previewError}
             </p>
           ) : (
-            <div className={`relative overflow-auto rounded-md bg-gray-100 ${
+            <div className={`relative hidden overflow-auto rounded-md bg-gray-100 sm:block ${
               isPreviewFullscreen ? 'min-h-0 flex-1' : 'min-h-[60vh]'
             }`}>
               {previewLoading && (
