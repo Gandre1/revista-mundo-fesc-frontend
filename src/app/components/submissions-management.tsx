@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { Search, Eye } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Search, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSubmissions } from './submission-context';
-import { EditorSummary, submissionService } from '../../services/submissionService';
+import {
+  EditorSummary,
+  SubmissionSortField,
+  submissionService,
+} from '../../services/submissionService';
 import {
   getSubmissionStatusBadgeClass,
   getSubmissionStatusLabel,
@@ -30,7 +34,7 @@ interface SubmissionsManagementProps {
 }
 
 export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagementProps) {
-  const { submissions, loading, error, refreshSubmissions } = useSubmissions();
+  const { submissions, pagination, loading, error, refreshSubmissions } = useSubmissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,9 +43,22 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
   const [editorError, setEditorError] = useState<string | null>(null);
   const [savingSubmissionId, setSavingSubmissionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SubmissionSortField>('fecha_envio');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
-    void refreshSubmissions();
+    void refreshSubmissions({
+      page,
+      limit: 10,
+      sortBy,
+      order,
+      search: searchQuery.trim() || undefined,
+      status: statusFilter === 'all' ? undefined : statusFilter,
+    });
+  }, [refreshSubmissions, page, sortBy, order, searchQuery, statusFilter]);
+
+  useEffect(() => {
     submissionService.getEditors()
       .then(({ editors: result }) => {
         setEditors(result);
@@ -51,20 +68,38 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
         console.error('Error al cargar la lista de editores:', cause);
         setEditorError(cause instanceof Error ? cause.message : 'No fue posible cargar los editores.');
       });
-  }, [refreshSubmissions]);
+  }, []);
 
-  const filteredSubmissions = submissions.filter((submission) => {
-    const query = searchQuery.trim().toLocaleLowerCase();
-    const matchesSearch =
-      !query ||
-      submission.titulo.toLocaleLowerCase().includes(query) ||
-      submission.autor_nombre.toLocaleLowerCase().includes(query);
+  const handleSort = (column: SubmissionSortField) => {
+    if (sortBy === column) {
+      setOrder((currentOrder) => currentOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setOrder(column === 'fecha_envio' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
 
-    return matchesSearch && (
-      statusFilter === 'all' ||
-      normalizeSubmissionStatus(submission.estado) === statusFilter
-    );
-  });
+  const renderSortableHeader = (label: string, column: SubmissionSortField) => (
+    <th
+      aria-sort={sortBy === column ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider"
+    >
+      <button
+        type="button"
+        onClick={() => handleSort(column)}
+        className="inline-flex items-center gap-2 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300 rounded"
+      >
+        {label}
+        {sortBy === column
+          ? order === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+          : <ArrowUpDown className="h-3.5 w-3.5 opacity-60" />}
+      </button>
+    </th>
+  );
+
+  const startItem = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+  const endItem = Math.min(pagination.page * pagination.limit, pagination.total);
 
   const saveSubmissionChange = async (
     id: string,
@@ -116,14 +151,20 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
               placeholder="Buscar por título o autor..."
               aria-label="Buscar por título o nombre del autor"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setPage(1);
+              }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition-all text-sm"
             />
           </div>
           <div className="w-full md:w-64">
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPage(1);
+              }}
               aria-label="Filtrar envíos por estado"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition-all text-sm"
             >
@@ -134,7 +175,7 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
           </div>
         </div>
         <div className="mt-3 text-xs text-gray-500">
-          Mostrando {filteredSubmissions.length} de {submissions.length} envíos
+          Mostrando {startItem}-{endItem} de {pagination.total} envíos
         </div>
       </div>
 
@@ -154,16 +195,16 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Título</th>
+                  {renderSortableHeader('Título', 'titulo')}
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Autor principal</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Fecha de envío</th>
+                  {renderSortableHeader('Fecha de envío', 'fecha_envio')}
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Estado</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Editor asignado</th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredSubmissions.map((submission) => {
+                {submissions.map((submission) => {
                   const submittedDate = submission.fecha_envio || submission.created_at;
 
                   return (
@@ -252,11 +293,39 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
           </div>
         )}
 
-        {!loading && !error && filteredSubmissions.length === 0 && (
+        {!loading && !error && submissions.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500 text-sm">
-              {submissions.length === 0 ? 'No hay envíos registrados.' : 'No se encontraron envíos.'}
+              {pagination.total === 0 && !searchQuery && statusFilter === 'all'
+                ? 'No hay envíos registrados.'
+                : 'No se encontraron envíos.'}
             </p>
+          </div>
+        )}
+
+        {!loading && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3">
+            <p className="text-sm text-gray-600">
+              Página {pagination.page} de {pagination.totalPages}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+                disabled={pagination.page <= 1}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((currentPage) => Math.min(pagination.totalPages, currentPage + 1))}
+                disabled={pagination.page >= pagination.totalPages}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </div>

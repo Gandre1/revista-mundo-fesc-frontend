@@ -6,20 +6,23 @@ import {
   Check,
   ClipboardList,
   ClipboardCheck,
+  Clock3,
   Download,
   Eye,
   ExternalLink,
   FileText,
-  Languages,
+  History,
   Loader2,
   Maximize,
   Minimize,
   Paperclip,
   Scale,
   Send,
+  CalendarClock,
   CheckCircle,
   MessageSquareText,
   ThumbsDown,
+  UserRound,
   Users,
   ZoomIn,
   ZoomOut,
@@ -31,6 +34,7 @@ import {
   SubmissionDetail as Submission,
 } from '../../services/submissionService';
 import {
+  getSubmissionStatusBadgeClass,
   getSubmissionStatusLabel,
   normalizeSubmissionStatus,
 } from '../lib/submission-status';
@@ -339,7 +343,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     ? -1
     : getEditorialStageIndex(submission.estado || submission.status, submission.paso_envio);
   const visibleTimelineStage = selectedTimelineStage ?? Math.max(currentTimelineStage, 0);
-  const selectedStage = EDITORIAL_STAGES[visibleTimelineStage];
+  const currentStage = currentTimelineStage >= 0 ? EDITORIAL_STAGES[currentTimelineStage] : null;
+  const currentStatus = submission.estado || submission.status || '';
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-4">
@@ -364,105 +369,215 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               Autor principal: <strong>{submission.autor_nombre}</strong>
               {submission.autor_email && ` · ${submission.autor_email}`}
             </p>
-            <p className="text-sm text-gray-600 mt-1">
-              Editor asignado: <strong>{submission.editor_nombre || 'Sin asignar'}</strong>
-            </p>
-            <p className="text-sm text-gray-600 mt-2">
-              {isDraft ? 'Borrador sin enviar' : `Enviado: ${formatDate(submission.fecha_envio)}`}
-              {submission.created_at && ` · Creado: ${formatDate(submission.created_at)}`}
-            </p>
           </div>
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
-            {isDraft ? 'Borrador' : getSubmissionStatusLabel(submission.estado)}
-          </span>
         </div>
       </section>
 
       <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b pb-3 mb-5">
+        <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2" style={{ color: FESC_DARK_RED }}>
+          <History className="w-5 h-5" style={{ color: FESC_RED }} />
+          Estado del Envío
+        </h2>
+
+        <div className="border-b pb-5 mb-5">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
           <div>
-            <h2 className="font-semibold text-lg" style={{ color: FESC_DARK_RED }}>Proceso editorial</h2>
-            <p className="text-sm text-gray-500 mt-1">Selecciona una etapa para consultar en qué consiste.</p>
+              <h3 className="font-semibold text-base text-gray-800">Etapas del proceso editorial</h3>
+            </div>
           </div>
-          <span
-            className="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap self-start"
-            style={{ backgroundColor: isDraft ? '#f3f4f6' : '#fee2e2', color: isDraft ? '#4b5563' : FESC_DARK_RED }}
-          >
-            {isDraft ? 'Borrador sin enviar' : getSubmissionStatusLabel(submission.estado || submission.status)}
-          </span>
+
+          <ol aria-label="Etapas del proceso editorial" className="flex overflow-x-auto pb-2">
+            {EDITORIAL_STAGES.map(({ label, Icon }, index) => {
+              const isCurrent = index === currentTimelineStage;
+              const isComplete = currentTimelineStage >= 0 && index < currentTimelineStage;
+              const isSelected = index === visibleTimelineStage;
+
+              return (
+                <li key={label} className="flex min-w-[148px] flex-1 items-start">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimelineStage(index)}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    aria-pressed={isSelected}
+                    aria-label={`${index + 1}. ${label}${isCurrent ? ', etapa actual' : isComplete ? ', completada' : ''}`}
+                    className="group flex w-full flex-col items-center text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded"
+                    style={{ '--tw-ring-color': FESC_RED } as React.CSSProperties}
+                  >
+                    <span
+                      className="flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors"
+                      style={{
+                        borderColor: isCurrent || isComplete ? FESC_RED : '#d1d5db',
+                        backgroundColor: isCurrent ? FESC_RED : isComplete ? '#fee2e2' : '#fff',
+                        color: isCurrent ? '#fff' : isComplete ? FESC_DARK_RED : '#6b7280',
+                      }}
+                    >
+                      {isComplete ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                    </span>
+                    <span
+                      className="mt-2 px-1 text-xs font-semibold leading-snug"
+                      style={{ color: isCurrent || isSelected ? FESC_DARK_RED : isComplete ? '#4b5563' : '#6b7280' }}
+                    >
+                      {index + 1}. {label}
+                    </span>
+                    <span className="mt-1 text-[11px] text-gray-500">
+                      {isCurrent ? 'Etapa actual' : isComplete ? 'Completada' : 'Pendiente'}
+                    </span>
+                  </button>
+                  {index < EDITORIAL_STAGES.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      className="mt-5 h-0.5 min-w-4 flex-1"
+                      style={{ backgroundColor: isComplete ? FESC_RED : '#e5e7eb' }}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+
         </div>
 
-        <ol aria-label="Etapas del proceso editorial" className="flex overflow-x-auto pb-2">
-          {EDITORIAL_STAGES.map(({ label, Icon }, index) => {
-            const isCurrent = index === currentTimelineStage;
-            const isComplete = currentTimelineStage >= 0 && index < currentTimelineStage;
-            const isSelected = index === visibleTimelineStage;
-
-            return (
-              <li key={label} className="flex min-w-[148px] flex-1 items-start">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTimelineStage(index)}
-                  aria-current={isCurrent ? 'step' : undefined}
-                  aria-pressed={isSelected}
-                  aria-label={`${index + 1}. ${label}${isCurrent ? ', etapa actual' : isComplete ? ', completada' : ''}`}
-                  className="group flex w-full flex-col items-center text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded"
-                  style={{ '--tw-ring-color': FESC_RED } as React.CSSProperties}
-                >
-                  <span
-                    className="flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors"
-                    style={{
-                      borderColor: isCurrent || isComplete ? FESC_RED : '#d1d5db',
-                      backgroundColor: isCurrent ? FESC_RED : isComplete ? '#fee2e2' : '#fff',
-                      color: isCurrent ? '#fff' : isComplete ? FESC_DARK_RED : '#6b7280',
-                    }}
-                  >
-                    {isComplete ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-                  </span>
-                  <span
-                    className="mt-2 px-1 text-xs font-semibold leading-snug"
-                    style={{ color: isCurrent || isSelected ? FESC_DARK_RED : isComplete ? '#4b5563' : '#6b7280' }}
-                  >
-                    {index + 1}. {label}
-                  </span>
-                  <span className="mt-1 text-[11px] text-gray-500">
-                    {isCurrent ? 'Etapa actual' : isComplete ? 'Completada' : 'Pendiente'}
-                  </span>
-                </button>
-                {index < EDITORIAL_STAGES.length - 1 && (
-                  <span
-                    aria-hidden="true"
-                    className="mt-5 h-0.5 min-w-4 flex-1"
-                    style={{ backgroundColor: isComplete ? FESC_RED : '#e5e7eb' }}
-                  />
-                )}
-              </li>
-            );
-          })}
+        <ol aria-label="Trazabilidad disponible del envío" className="mb-5">
+          <li className="relative flex gap-3 pb-4">
+            <span className="absolute left-[15px] top-8 h-full w-px bg-gray-200" aria-hidden="true" />
+            <span className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-700">
+              <Send className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 pt-1">
+              <p className="text-sm font-semibold text-gray-800">Fecha de Envío Original</p>
+              <p className="mt-1 text-sm text-gray-600">
+                {submission.fecha_envio
+                  ? formatDate(submission.fecha_envio)
+                  : isDraft
+                    ? 'El artículo aún no ha sido enviado.'
+                    : 'Fecha de envío no disponible en el detalle.'}
+              </p>
+            </div>
+          </li>
         </ol>
 
-        <div className="mt-4 rounded-md border-l-4 bg-gray-50 p-3" style={{ borderLeftColor: FESC_RED }}>
-          <p className="text-sm font-semibold text-gray-800">
-            {visibleTimelineStage + 1}. {selectedStage.label}
-            {visibleTimelineStage === currentTimelineStage && !isDraft && ' · Etapa actual'}
-          </p>
-          <p className="mt-1 text-sm text-gray-600">{selectedStage.description}</p>
-          {isDraft && (
-            <p className="mt-1 text-xs text-gray-500">
-              El proceso editorial comienza cuando el artículo se envía a la revista.
-            </p>
-          )}
-          {isRejectedStatus(submission.estado || submission.status) && visibleTimelineStage === currentTimelineStage && (
-            <p className="mt-1 text-xs font-medium text-gray-600">
-              La decisión registrada para este artículo es: {getSubmissionStatusLabel(submission.estado || submission.status)}.
-            </p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-md border border-gray-200 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <Clock3 className="h-4 w-4" style={{ color: FESC_RED }} />
+              Estado Actual
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <span
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                  getSubmissionStatusBadgeClass(isDraft ? 'borrador' : currentStatus)
+                }`}
+              >
+                {isDraft ? 'Borrador' : getSubmissionStatusLabel(currentStatus)}
+              </span>
+              {currentStage && (
+                <p className="text-sm text-gray-600">{currentStage.description}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-gray-200 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <UserRound className="h-4 w-4" style={{ color: FESC_RED }} />
+              Editor Asignado
+            </div>
+            <p className="text-sm text-gray-700">{submission.editor_nombre || 'Sin asignar'}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-md border border-gray-200 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <CalendarClock className="h-4 w-4" style={{ color: FESC_RED }} />
+            Fechas Límite de los Revisores asignados
+          </div>
+          {(submission.revisores?.length ?? 0) > 0 ? (
+            <ul className="space-y-2">
+              {submission.revisores?.map((review) => (
+                <li
+                  key={review.id}
+                  className="flex flex-col gap-1 border-b border-gray-100 pb-2 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="text-sm font-medium text-gray-800">{review.reviewer_nombre}</span>
+                  <span className="text-sm text-gray-600">
+                    {review.fecha_limite ? formatDate(review.fecha_limite) : 'Fecha límite no registrada'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500">No hay revisores asignados.</p>
           )}
         </div>
 
-        <p className="mt-4 text-xs text-gray-500">
-          {isDraft ? 'Fecha de envío: pendiente' : `Fecha de envío: ${formatDate(submission.fecha_envio)}`}
-        </p>
+        {submission.comentarios_editor?.trim() && (
+          <article className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
+              <MessageSquareText className="h-4 w-4" />
+              Observaciones del Editor (Última actualización)
+            </h3>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-amber-950">
+              {submission.comentarios_editor}
+            </p>
+          </article>
+        )}
+
       </section>
+
+      {isEditorRoute && (
+        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
+            Asignar revisor
+          </h2>
+
+          {reviewersError && (
+            <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {reviewersError}
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+            <label className="block text-sm font-medium text-gray-700">
+              Revisor / evaluador
+              <select
+                value={selectedReviewerId}
+                onChange={(event) => setSelectedReviewerId(event.target.value)}
+                disabled={reviewersLoading || reviewers.length === 0 || savingReviewAssignment}
+                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <option value="">
+                  {reviewersLoading ? 'Cargando revisores...' : 'Seleccionar revisor'}
+                </option>
+                {reviewers.map((reviewer) => (
+                  <option key={reviewer.id} value={reviewer.id}>
+                    {[reviewer.nombre, reviewer.apellidos].filter(Boolean).join(' ')} · {reviewer.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Fecha límite de revisión
+              <input
+                type="date"
+                value={reviewDeadline}
+                onChange={(event) => setReviewDeadline(event.target.value)}
+                disabled={savingReviewAssignment}
+                min={new Date().toISOString().slice(0, 10)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void assignReviewer()}
+              disabled={!selectedReviewerId || !reviewDeadline || savingReviewAssignment || reviewersLoading}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: FESC_DARK_RED }}
+            >
+              {savingReviewAssignment ? 'Asignando...' : 'Asignar revisor'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {isEditorRoute && (
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
@@ -763,89 +878,6 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               )}
             </div>
           )}
-        </section>
-      )}
-
-      <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-        <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
-          <Languages className="w-5 h-5" style={{ color: FESC_RED }} /> Comentarios editoriales
-        </h2>
-        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
-          {submission.comentarios_editor || 'No hay comentarios editoriales registrados.'}
-        </p>
-      </section>
-
-      {isEditorRoute && (
-        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
-            <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
-            Revisores y fechas límite
-          </h2>
-
-          {reviewersError && (
-            <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {reviewersError}
-            </p>
-          )}
-
-          {(submission.revisores?.length ?? 0) > 0 ? (
-            <div className="mb-5 space-y-2">
-              {submission.revisores?.map((review) => (
-                <div key={review.id} className="flex flex-col gap-1 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{review.reviewer_nombre}</p>
-                    <p className="text-xs text-gray-500">{review.estado || 'Revisión asignada'}</p>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    Fecha límite: <strong>{formatDate(review.fecha_limite)}</strong>
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mb-5 text-sm text-gray-500">Todavía no hay revisores asignados a este envío.</p>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
-            <label className="block text-sm font-medium text-gray-700">
-              Revisor / evaluador
-              <select
-                value={selectedReviewerId}
-                onChange={(event) => setSelectedReviewerId(event.target.value)}
-                disabled={reviewersLoading || reviewers.length === 0 || savingReviewAssignment}
-                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
-              >
-                <option value="">
-                  {reviewersLoading ? 'Cargando revisores...' : 'Seleccionar revisor'}
-                </option>
-                {reviewers.map((reviewer) => (
-                  <option key={reviewer.id} value={reviewer.id}>
-                    {[reviewer.nombre, reviewer.apellidos].filter(Boolean).join(' ')} · {reviewer.email}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Fecha límite de revisión
-              <input
-                type="date"
-                value={reviewDeadline}
-                onChange={(event) => setReviewDeadline(event.target.value)}
-                disabled={savingReviewAssignment}
-                min={new Date().toISOString().slice(0, 10)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void assignReviewer()}
-              disabled={!selectedReviewerId || !reviewDeadline || savingReviewAssignment || reviewersLoading}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: FESC_DARK_RED }}
-            >
-              {savingReviewAssignment ? 'Asignando...' : 'Asignar revisor'}
-            </button>
-          </div>
         </section>
       )}
 

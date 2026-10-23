@@ -41,6 +41,35 @@ export interface EditorialSubmission extends SubmissionSummary {
   editor_nombre: string | null;
 }
 
+export type SubmissionSortField =
+  | 'titulo'
+  | 'fecha_envio'
+  | 'created_at'
+  | 'estado'
+  | 'autor_nombre'
+  | 'editor_nombre';
+
+export interface EditorialSubmissionQuery {
+  page?: number;
+  limit?: number;
+  sortBy?: SubmissionSortField;
+  order?: 'asc' | 'desc';
+  search?: string;
+  status?: string;
+}
+
+export interface SubmissionPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface EditorialSubmissionsResponse {
+  submissions: EditorialSubmission[];
+  pagination: SubmissionPagination;
+}
+
 export interface EditorSummary {
   id: string;
   nombre: string;
@@ -115,8 +144,15 @@ export const submissionService = {
     return apiFetch<{ submissions: SubmissionSummary[] }>('/submissions/my-submissions');
   },
 
-  getEditorialSubmissions: async () => {
-    return apiFetch<{ submissions: EditorialSubmission[] }>('/submissions');
+  getEditorialSubmissions: async (options: EditorialSubmissionQuery = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    });
+    const queryString = query.toString();
+    return apiFetch<EditorialSubmissionsResponse>(
+      `/submissions${queryString ? `?${queryString}` : ''}`
+    );
   },
 
   getEditors: async () => {
