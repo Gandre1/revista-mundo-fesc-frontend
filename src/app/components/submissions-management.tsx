@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, Eye } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSubmissions } from './submission-context';
+import { useAuth } from './auth-context';
 import {
   EditorSummary,
   SubmissionSortField,
@@ -35,6 +36,8 @@ interface SubmissionsManagementProps {
 
 export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagementProps) {
   const { submissions, pagination, loading, error, refreshSubmissions } = useSubmissions();
+  const { user } = useAuth();
+  const canManageSubmissions = user?.role === 'editor' || user?.role === 'admin';
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +62,8 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
   }, [refreshSubmissions, page, sortBy, order, searchQuery, statusFilter]);
 
   useEffect(() => {
+    if (!canManageSubmissions) return;
+
     submissionService.getEditors()
       .then(({ editors: result }) => {
         setEditors(result);
@@ -68,7 +73,7 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
         console.error('Error al cargar la lista de editores:', cause);
         setEditorError(cause instanceof Error ? cause.message : 'No fue posible cargar los editores.');
       });
-  }, []);
+  }, [canManageSubmissions]);
 
   const handleSort = (column: SubmissionSortField) => {
     if (sortBy === column) {
@@ -89,6 +94,9 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
         type="button"
         onClick={() => handleSort(column)}
         className="inline-flex items-center gap-2 hover:text-red-800 focus:outline-none focus:ring-2 focus:ring-red-300 rounded"
+        aria-label={`Ordenar por ${label.toLocaleLowerCase()}${sortBy === column
+          ? order === 'asc' ? ' en orden descendente' : ' en orden ascendente'
+          : column === 'fecha_envio' ? ' en orden descendente' : ' en orden ascendente'}`}
       >
         {label}
         {sortBy === column
@@ -200,11 +208,44 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                   {renderSortableHeader('Fecha de envío', 'fecha_envio')}
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Estado</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Editor asignado</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
+                  {canManageSubmissions && (
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {submissions.map((submission) => {
+                {submissions.length === 0 && !error ? (
+                  <tr>
+                    <td colSpan={canManageSubmissions ? 6 : 5} className="px-6 py-12 text-center">
+                      <div className="mx-auto flex max-w-md flex-col items-center">
+                        <Search aria-hidden="true" className="mb-3 h-8 w-8 text-gray-400" />
+                        <p className="font-semibold text-gray-800">
+                          {pagination.total === 0 && !searchQuery.trim() && statusFilter === 'all'
+                            ? 'Aún no hay envíos registrados'
+                            : 'No encontramos envíos con esos criterios'}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {pagination.total === 0 && !searchQuery.trim() && statusFilter === 'all'
+                            ? 'Los nuevos artículos aparecerán aquí cuando se envíen.'
+                            : 'Prueba con otra búsqueda o estado, o limpia los filtros para ver todos los envíos.'}
+                        </p>
+                        {(searchQuery.trim() || statusFilter !== 'all') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearchQuery('');
+                              setStatusFilter('all');
+                              setPage(1);
+                            }}
+                            className="mt-4 rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-800 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2"
+                          >
+                            Limpiar filtros
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : submissions.map((submission) => {
                   const submittedDate = submission.fecha_envio || submission.created_at;
 
                   return (
@@ -233,7 +274,7 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                           <span className={`inline-flex w-32 shrink-0 justify-center rounded-full px-2 py-1.5 text-xs font-medium ${getSubmissionStatusBadgeClass(submission.borrador ? 'borrador' : submission.estado)}`}>
                             {submission.borrador ? 'Borrador' : getSubmissionStatusLabel(submission.estado)}
                           </span>
-                          <select
+                          {canManageSubmissions ? <select
                             value={normalizeSubmissionStatus(submission.estado)}
                             onChange={(event) => void saveSubmissionChange(
                               submission.id,
@@ -250,11 +291,11 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                                 {value === 'revisiones_requeridas' ? 'Ajustes solicitados (autor)' : label}
                               </option>
                             ))}
-                          </select>
+                          </select> : null}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <select
+                        {canManageSubmissions ? <select
                           value={submission.editor_id || ''}
                           onChange={(event) => void saveSubmissionChange(
                             submission.id,
@@ -271,9 +312,13 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                               {[editor.nombre, editor.apellidos].filter(Boolean).join(' ')}
                             </option>
                           ))}
-                        </select>
+                        </select> : (
+                          <span className="text-sm text-gray-700">
+                            {submission.editor_nombre || 'Sin asignar'}
+                          </span>
+                        )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                      {canManageSubmissions && <td className="px-6 py-4 whitespace-nowrap text-right">
                         <button
                           type="button"
                           onClick={() => openSubmission(submission.id)}
@@ -284,22 +329,12 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                           <Eye className="w-4 h-4" />
                           Ver Detalle / Gestionar
                         </button>
-                      </td>
+                      </td>}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {!loading && !error && submissions.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 text-sm">
-              {pagination.total === 0 && !searchQuery && statusFilter === 'all'
-                ? 'No hay envíos registrados.'
-                : 'No se encontraron envíos.'}
-            </p>
           </div>
         )}
 
@@ -314,7 +349,9 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                 onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
                 disabled={pagination.page <= 1}
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Ir a la página anterior"
               >
+                <ChevronLeft aria-hidden="true" className="mr-1 inline h-4 w-4" />
                 Anterior
               </button>
               <button
@@ -322,8 +359,10 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                 onClick={() => setPage((currentPage) => Math.min(pagination.totalPages, currentPage + 1))}
                 disabled={pagination.page >= pagination.totalPages}
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Ir a la página siguiente"
               >
                 Siguiente
+                <ChevronRight aria-hidden="true" className="ml-1 inline h-4 w-4" />
               </button>
             </div>
           </div>

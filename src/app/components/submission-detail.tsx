@@ -28,6 +28,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from './auth-context';
 import {
   ReviewerSummary,
   submissionService,
@@ -76,6 +77,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const id = submissionId || routeId;
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManageSubmissions = user?.role === 'editor' || user?.role === 'admin';
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +155,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   }, [id]);
 
   useEffect(() => {
-    if (!isEditorRoute) return;
+    if (!canManageSubmissions) return;
 
     let active = true;
     setReviewersLoading(true);
@@ -175,7 +178,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     return () => {
       active = false;
     };
-  }, [isEditorRoute]);
+  }, [canManageSubmissions]);
 
   const returnToList = () => {
     if (onBack) {
@@ -523,7 +526,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
 
       </section>
 
-      {isEditorRoute && (
+      {canManageSubmissions && (
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -579,7 +582,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      {isEditorRoute && (
+      {canManageSubmissions && (
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <Scale className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -881,7 +884,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      <AlertDialog
+      {canManageSubmissions && <AlertDialog
         open={selectedDecision !== null}
         onOpenChange={(open) => {
           if (!open && !savingDecision) setSelectedDecision(null);
@@ -926,7 +929,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             </button>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog>}
     </div>
   );
 }
