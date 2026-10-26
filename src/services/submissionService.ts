@@ -92,6 +92,16 @@ export interface SubmissionReview {
   estado?: string | null;
 }
 
+export interface SubmissionAuditLog {
+  id: string | number;
+  submission_id: string;
+  user_id: string | null;
+  user_nombre: string | null;
+  action: string;
+  description: string;
+  created_at: string;
+}
+
 export interface SubmissionFile {
   id: number | string;
   nombre_original: string;
@@ -165,6 +175,12 @@ export const submissionService = {
 
   getSubmissionById: async (id: string) => {
     return apiFetch<{ submission: SubmissionDetail }>(`/submissions/${encodeURIComponent(id)}`);
+  },
+
+  getSubmissionAuditLogs: async (id: string) => {
+    return apiFetch<{ auditLogs: SubmissionAuditLog[] }>(
+      `/submissions/${encodeURIComponent(id)}/audit-logs`
+    );
   },
 
   updateSubmissionStatus: async (id: string, status: string, comentariosEditor?: string) => {

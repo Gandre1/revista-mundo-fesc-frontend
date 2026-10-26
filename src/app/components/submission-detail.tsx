@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft,
@@ -32,6 +32,7 @@ import { useAuth } from './auth-context';
 import {
   ReviewerSummary,
   submissionService,
+  SubmissionAuditLog,
   SubmissionDetail as Submission,
 } from '../../services/submissionService';
 import {
@@ -82,6 +83,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<SubmissionAuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [fileActionId, setFileActionId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<Submission['archivos'][number] | null>(null);
@@ -103,6 +107,33 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [editorialComment, setEditorialComment] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
   const isEditorRoute = location.pathname.startsWith('/editor');
+
+  const refreshAuditLogs = useCallback(async () => {
+    if (!id || !canManageSubmissions) return;
+
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const { auditLogs: result } = await submissionService.getSubmissionAuditLogs(id);
+      setAuditLogs(result);
+    } catch (cause) {
+      console.error(`Error al cargar la bitácora del envío ${id}:`, cause);
+      setAuditLogs([]);
+      setAuditError(cause instanceof Error ? cause.message : 'No fue posible cargar la bitácora.');
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [id, canManageSubmissions]);
+
+  useEffect(() => {
+    if (canManageSubmissions) {
+      void refreshAuditLogs();
+    } else {
+      setAuditLogs([]);
+      setAuditError(null);
+      setAuditLoading(false);
+    }
+  }, [canManageSubmissions, refreshAuditLogs]);
 
   useEffect(() => {
     return () => {
@@ -268,6 +299,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       await submissionService.assignReviewer(id, selectedReviewerId, reviewDeadline);
       const { submission: updatedSubmission } = await submissionService.getSubmissionById(id);
       setSubmission(updatedSubmission);
+      await refreshAuditLogs();
       setSelectedReviewerId('');
       setReviewDeadline('');
       toast.success('Revisor asignado y fecha límite registrada.');
@@ -296,6 +328,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
 
     try {
       await submissionService.updateSubmissionStatus(id, selectedDecision.status, comment || undefined);
+      await refreshAuditLogs();
       toast.success(`Estado actualizado: ${selectedDecision.label}.`);
       setSelectedDecision(null);
       setEditorialComment('');
@@ -350,16 +383,16 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const currentStatus = submission.estado || submission.status || '';
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4">
+    <div className="flex flex-col gap-6 max-w-6xl mx-auto p-4">
       <button
         type="button"
         onClick={returnToList}
-        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
+        className="order-1 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
       >
         <ArrowLeft className="w-4 h-4" /> Volver a la lista
       </button>
 
-      <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+      <section className="order-2 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
             <span className="text-xs font-mono bg-gray-100 text-gray-600 px-2.5 py-1 rounded">
@@ -376,7 +409,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </div>
       </section>
 
-      <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+      <section className="order-8 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2" style={{ color: FESC_DARK_RED }}>
           <History className="w-5 h-5" style={{ color: FESC_RED }} />
           Estado del Envío
@@ -527,7 +560,66 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       </section>
 
       {canManageSubmissions && (
-        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <section className="order-9 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2
+            className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2"
+            style={{ color: FESC_DARK_RED }}
+          >
+            <History className="w-5 h-5" style={{ color: FESC_RED }} />
+            Historial de Actividad y Auditoría
+          </h2>
+
+          {auditLoading ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-gray-500" role="status">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando historial de auditoría...
+            </div>
+          ) : auditError ? (
+            <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              No se pudo cargar el historial de auditoría: {auditError}
+            </p>
+          ) : auditLogs.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Aún no hay eventos registrados en la bitácora de este envío.
+            </p>
+          ) : (
+            <ol aria-label="Historial cronológico de auditoría" className="space-y-0">
+              {[...auditLogs]
+                .sort((first, second) => {
+                  const firstTimestamp = new Date(first.created_at.replace(' ', 'T')).getTime();
+                  const secondTimestamp = new Date(second.created_at.replace(' ', 'T')).getTime();
+                  if (Number.isNaN(firstTimestamp) || Number.isNaN(secondTimestamp)) return 0;
+                  return firstTimestamp - secondTimestamp;
+                })
+                .map((log, index, logs) => (
+                  <li key={log.id} className="relative flex gap-3 pb-5 last:pb-0">
+                    {index < logs.length - 1 && (
+                      <span className="absolute left-[15px] top-8 h-full w-px bg-gray-200" aria-hidden="true" />
+                    )}
+                    <span className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-700">
+                      <Clock3 className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <p className="text-sm font-semibold text-gray-800">{formatAuditAction(log.action)}</p>
+                        <time className="shrink-0 text-xs text-gray-500" dateTime={log.created_at}>
+                          {formatDate(log.created_at)}
+                        </time>
+                      </div>
+                      <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{log.description}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Usuario responsable: {log.user_nombre || 'Usuario no disponible'}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+            </ol>
+          )}
+        </section>
+      )}
+
+      {canManageSubmissions && (
+        <section className="order-7 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
             Asignar revisor
@@ -583,7 +675,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       )}
 
       {canManageSubmissions && (
-        <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+        <section className="order-6 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <Scale className="w-5 h-5" style={{ color: FESC_RED }} />
             Decisión editorial
@@ -621,7 +713,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+      <section className="order-3 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
           <BookOpen className="w-5 h-5" style={{ color: FESC_RED }} /> Información del artículo
         </h2>
@@ -645,7 +737,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </div>
       </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="order-4 grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
             <Users className="w-5 h-5" style={{ color: FESC_RED }} /> Autores y colaboradores
@@ -743,7 +835,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       {previewFile && (
         <section
           ref={previewContainerRef}
-          className={`bg-white rounded-lg border border-gray-200 shadow-sm ${
+          className={`order-5 bg-white rounded-lg border border-gray-200 shadow-sm ${
             isPreviewFullscreen
               ? 'flex h-screen max-h-screen w-screen flex-col overflow-hidden rounded-none border-0 p-3 sm:p-4'
               : 'p-4 sm:p-6'
@@ -998,6 +1090,15 @@ function formatDate(value: string | null): string {
   if (!value) return 'Pendiente';
   const date = new Date(value.replace(' ', 'T'));
   return Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleString('es-ES');
+}
+
+function formatAuditAction(action: string): string {
+  const labels: Record<string, string> = {
+    status_updated: 'Actualización de estado',
+    editor_assigned: 'Asignación de editor',
+    reviewer_assigned: 'Asignación de revisor',
+  };
+  return labels[action] || action.replace(/[_-]+/g, ' ');
 }
 
 function formatFileSize(bytes: number): string {
