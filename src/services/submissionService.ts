@@ -70,6 +70,23 @@ export interface EditorialSubmissionsResponse {
   pagination: SubmissionPagination;
 }
 
+export interface SubmissionStatusStats {
+  conteo: number;
+  porcentaje: number;
+}
+
+export interface SubmissionStats {
+  total: number;
+  estados: {
+    nuevos: SubmissionStatusStats;
+    en_revision: SubmissionStatusStats;
+    ajustes_solicitados: SubmissionStatusStats;
+    aceptados: SubmissionStatusStats;
+    rechazados: SubmissionStatusStats;
+    publicados: SubmissionStatusStats;
+  };
+}
+
 export interface EditorSummary {
   id: string;
   nombre: string;
@@ -146,6 +163,10 @@ export interface SubmissionDetail {
   created_at: string;
   archivos: SubmissionFile[];
   autores: SubmissionAuthor[];
+}
+
+export async function getSubmissionStats(): Promise<SubmissionStats> {
+  return apiFetch<SubmissionStats>('/submissions/stats');
 }
 
 export const submissionService = {

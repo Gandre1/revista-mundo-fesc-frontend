@@ -1,12 +1,16 @@
 import { FileText, Clock, CheckCircle, TrendingUp, PlusCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { EditorialSubmission, submissionService } from '../../services/submissionService';
+import {
+  EditorialSubmission,
+  getSubmissionStats,
+  SubmissionStats,
+  submissionService,
+} from '../../services/submissionService';
 import { useAuth } from './auth-context';
 import {
   getSubmissionStatusColor,
   getSubmissionStatusLabel,
-  normalizeSubmissionStatus,
 } from '../lib/submission-status';
 
 const FESC_RED = '#e30513';
@@ -18,6 +22,9 @@ export function Dashboard() {
   const [submissions, setSubmissions] = useState<EditorialSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<SubmissionStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -38,22 +45,27 @@ export function Dashboard() {
         if (active) setLoading(false);
       });
 
+    getSubmissionStats()
+      .then((result) => {
+        if (active) {
+          setStats(result);
+          setStatsError(null);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          console.error('Error al cargar las estadísticas de envíos:', cause);
+          setStatsError(cause instanceof Error ? cause.message : 'No fue posible cargar las estadísticas.');
+        }
+      })
+      .finally(() => {
+        if (active) setStatsLoading(false);
+      });
+
     return () => {
       active = false;
     };
   }, []);
-
-  const countStatus = (status: string) =>
-    submissions.filter((submission) => normalizeSubmissionStatus(submission.estado) === status).length;
-  const stats = {
-    totalSubmissions: submissions.length,
-    newSubmissions: countStatus('nuevo') + countStatus('enviado'),
-    inReview: countStatus('en_revision'),
-    revisionsRequired: countStatus('revisiones_requeridas'),
-    accepted: countStatus('aceptado'),
-    rejected: countStatus('rechazado'),
-    published: countStatus('publicado'),
-  };
 
   return (
     <div className="space-y-6">
@@ -84,32 +96,38 @@ export function Dashboard() {
         <MetricCard
           icon={<FileText className="w-6 h-6" />}
           title="Total Envíos"
-          value={stats.totalSubmissions}
+          value={statsLoading ? '…' : statsError ? '—' : stats?.total ?? 0}
           subtitle="Todos los tiempos"
           color={FESC_RED}
         />
         <MetricCard
           icon={<Clock className="w-6 h-6" />}
           title="En Revisión"
-          value={stats.inReview}
+          value={statsLoading ? '…' : statsError ? '—' : stats?.estados.en_revision.conteo ?? 0}
           subtitle="Pendientes"
           color="#f59e0b"
         />
         <MetricCard
           icon={<CheckCircle className="w-6 h-6" />}
           title="Aceptados"
-          value={stats.accepted}
+          value={statsLoading ? '…' : statsError ? '—' : stats?.estados.aceptados.conteo ?? 0}
           subtitle="Artículos aceptados"
           color="#10b981"
         />
         <MetricCard
           icon={<TrendingUp className="w-6 h-6" />}
           title="Publicados"
-          value={stats.published}
+          value={statsLoading ? '…' : statsError ? '—' : stats?.estados.publicados.conteo ?? 0}
           subtitle="Artículos publicados"
           color="#6366f1"
         />
       </div>
+
+      {statsError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          No fue posible cargar las estadísticas: {statsError}
+        </div>
+      )}
 
       {error && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -122,14 +140,20 @@ export function Dashboard() {
         <h2 className="text-xl mb-4" style={{ color: FESC_GRAY, fontFamily: "'Roboto', Calibri, sans-serif" }}>
           Estado de Envíos
         </h2>
-        <div className="space-y-3">
-          <StatusBar label="Nuevos" count={stats.newSubmissions} total={stats.totalSubmissions} color="#3b82f6" />
-          <StatusBar label="En revisión" count={stats.inReview} total={stats.totalSubmissions} color="#f59e0b" />
-          <StatusBar label="Ajustes solicitados al autor" count={stats.revisionsRequired} total={stats.totalSubmissions} color="#ea580c" />
-          <StatusBar label="Aceptados" count={stats.accepted} total={stats.totalSubmissions} color="#10b981" />
-          <StatusBar label="Rechazados" count={stats.rejected} total={stats.totalSubmissions} color="#ef4444" />
-          <StatusBar label="Publicados" count={stats.published} total={stats.totalSubmissions} color="#8b5cf6" />
-        </div>
+        {statsLoading ? (
+          <p className="text-sm text-gray-500">Cargando estadísticas...</p>
+        ) : stats ? (
+          <div className="space-y-3">
+            <StatusBar label="Nuevos" {...stats.estados.nuevos} color="#3b82f6" />
+            <StatusBar label="En revisión" {...stats.estados.en_revision} color="#f59e0b" />
+            <StatusBar label="Ajustes solicitados al autor" {...stats.estados.ajustes_solicitados} color="#ea580c" />
+            <StatusBar label="Aceptados" {...stats.estados.aceptados} color="#10b981" />
+            <StatusBar label="Rechazados" {...stats.estados.rechazados} color="#ef4444" />
+            <StatusBar label="Publicados" {...stats.estados.publicados} color="#8b5cf6" />
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No se pudieron cargar las estadísticas.</p>
+        )}
       </div>
 
       {/* Lista de TODOS los envíos */}
@@ -224,26 +248,26 @@ function MetricCard({ icon, title, value, subtitle, color }: {
   );
 }
 
-function StatusBar({ label, count, total, color }: {
+function StatusBar({ label, conteo, porcentaje, color }: {
   label: string;
-  count: number;
-  total: number;
+  conteo: number;
+  porcentaje: number;
   color: string;
 }) {
-  const percentage = total > 0 ? (count / total) * 100 : 0;
+  const formattedPercentage = Number.isInteger(porcentaje) ? String(porcentaje) : porcentaje.toFixed(2);
 
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
         <span className="text-sm" style={{ color: FESC_GRAY }}>{label}</span>
         <span className="text-sm font-semibold" style={{ color: FESC_GRAY }}>
-          {count} ({percentage.toFixed(0)}%)
+          {conteo} ({formattedPercentage}%)
         </span>
       </div>
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div
           className="h-2 rounded-full transition-all"
-          style={{ width: `${percentage}%`, backgroundColor: color }}
+          style={{ width: `${porcentaje}%`, backgroundColor: color }}
         />
       </div>
     </div>
