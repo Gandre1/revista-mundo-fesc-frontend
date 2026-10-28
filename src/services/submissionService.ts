@@ -119,6 +119,25 @@ export interface SubmissionAuditLog {
   created_at: string;
 }
 
+export interface Notification {
+  id: string | number;
+  user_id: string;
+  submission_id: string | null;
+  title: string;
+  message: string;
+  is_read: boolean | number;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+}
+
+export interface MarkNotificationReadResponse {
+  message: string;
+  id: string | number;
+}
+
 export interface SubmissionFile {
   id: number | string;
   nombre_original: string;
@@ -169,7 +188,22 @@ export async function getSubmissionStats(): Promise<SubmissionStats> {
   return apiFetch<SubmissionStats>('/submissions/stats');
 }
 
+export async function getNotifications(): Promise<Notification[]> {
+  const response = await apiFetch<NotificationsResponse>('/notifications');
+  return response.notifications;
+}
+
+export async function markNotificationAsRead(id: string): Promise<MarkNotificationReadResponse> {
+  return apiFetch<MarkNotificationReadResponse>(
+    `/notifications/${encodeURIComponent(id)}/read`,
+    { method: 'PATCH' }
+  );
+}
+
 export const submissionService = {
+
+  getNotifications,
+  markNotificationAsRead,
 
   getMySubmissions: async () => {
     return apiFetch<{ submissions: SubmissionSummary[] }>('/submissions/my-submissions');
