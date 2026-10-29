@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { Inbox, LogOut, BookOpen, Menu, X, ChevronRight, BarChart3, User, PlusCircle, Mail, HelpCircle, ListTodo, Settings, FileText, Users, TrendingUp } from 'lucide-react';
-import { NotificationCenter } from './notification-center';
+import { NotificationBell } from './notification-bell';
 import { LanguageSelector } from './language-selector';
 import { useAuth } from './auth-context';
 import { i18n } from '../lib/i18n';
@@ -433,7 +433,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             <div>
             </div>
             <div className="flex items-center gap-4">
-              <NotificationCenter />
+              <NotificationBell />
               <button
                 onClick={() => navigate('/admin/profile')}
                 className="flex items-center gap-3 hover:opacity-80 transition-opacity"

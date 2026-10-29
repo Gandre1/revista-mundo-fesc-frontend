@@ -200,10 +200,26 @@ export async function markNotificationAsRead(id: string): Promise<MarkNotificati
   );
 }
 
+export async function deleteNotification(id: string): Promise<{ message: string; id: string | number }> {
+  return apiFetch<{ message: string; id: string | number }>(
+    `/notifications/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function clearNotifications(): Promise<{ message: string; deleted: number }> {
+  return apiFetch<{ message: string; deleted: number }>(
+    '/notifications',
+    { method: 'DELETE' }
+  );
+}
+
 export const submissionService = {
 
   getNotifications,
   markNotificationAsRead,
+  deleteNotification,
+  clearNotifications,
 
   getMySubmissions: async () => {
     return apiFetch<{ submissions: SubmissionSummary[] }>('/submissions/my-submissions');
