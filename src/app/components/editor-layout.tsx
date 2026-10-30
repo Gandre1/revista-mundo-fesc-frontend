@@ -109,6 +109,18 @@ export function EditorLayout({ children }: EditorLayoutProps) {
             >
               {i18n.t('menu.allSubmissions')}
             </Link>
+            <Link
+              to="/editor/numeros"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/editor/numeros')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/editor/numeros') ? FESC_RED : undefined }}
+            >
+              Volúmenes
+            </Link>
           </div>
 
           {/* Sección: Estadísticas */}

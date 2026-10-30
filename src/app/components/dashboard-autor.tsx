@@ -205,15 +205,6 @@ export function DashboardAutor() {
                           <FileText className="h-4 w-4" />
                           Continuar
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteDraft(submission)}
-                          disabled={isActionInProgress}
-                          className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {isActionInProgress ? 'Eliminando...' : 'Eliminar borrador'}
-                        </button>
                       </>
                     ) : (
                       <Link
@@ -224,6 +215,15 @@ export function DashboardAutor() {
                         Ver detalle
                       </Link>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteDraft(submission)}
+                      disabled={isActionInProgress}
+                      className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {isActionInProgress ? 'Eliminando...' : draft ? 'Eliminar borrador' : 'Eliminar envío'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => void handleDownloadFiles(submission)}
@@ -258,7 +258,8 @@ export function DashboardAutor() {
   );
 
   async function handleDeleteDraft(submission: SubmissionItem) {
-    if (!window.confirm(`¿Eliminar el borrador "${submission.titulo || 'Sin título'}"? Esta acción no se puede deshacer.`)) {
+    const draft = isDraft(submission);
+    if (!window.confirm(`¿Eliminar ${draft ? 'el borrador' : 'el envío'} "${submission.titulo || 'Sin título'}"? Esta acción no se puede deshacer.`)) {
       return;
     }
 
@@ -276,8 +277,8 @@ export function DashboardAutor() {
         console.error('No fue posible limpiar la copia local del borrador eliminado:', cause);
       }
     } catch (cause) {
-      console.error(`Error al eliminar el borrador ${submission.id}:`, cause);
-      setError(cause instanceof Error ? cause.message : 'No fue posible eliminar el borrador.');
+      console.error(`Error al eliminar el envío ${submission.id}:`, cause);
+      setError(cause instanceof Error ? cause.message : 'No fue posible eliminar el envío.');
     } finally {
       setActionSubmissionId(null);
     }

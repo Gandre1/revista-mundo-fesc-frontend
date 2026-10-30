@@ -22,6 +22,7 @@ import {
   CheckCircle,
   MessageSquareText,
   ThumbsDown,
+  Trash2,
   UserRound,
   Users,
   ZoomIn,
@@ -40,6 +41,7 @@ import {
   getSubmissionStatusLabel,
   normalizeSubmissionStatus,
 } from '../lib/submission-status';
+import { assignSubmissionToIssue, getIssues, Issue } from '../../services/issueService';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -106,6 +108,12 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [selectedDecision, setSelectedDecision] = useState<(typeof EDITORIAL_DECISIONS)[number] | null>(null);
   const [editorialComment, setEditorialComment] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [issuesLoading, setIssuesLoading] = useState(false);
+  const [issuesError, setIssuesError] = useState<string | null>(null);
+  const [selectedIssueId, setSelectedIssueId] = useState('');
+  const [savingIssueAssignment, setSavingIssueAssignment] = useState(false);
+  const [deletingSubmission, setDeletingSubmission] = useState(false);
   const isEditorRoute = location.pathname.startsWith('/editor');
 
   const refreshAuditLogs = useCallback(async () => {
@@ -167,7 +175,15 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
 
     submissionService.getSubmissionById(id)
       .then(({ submission: result }) => {
-        if (active) setSubmission(result);
+        if (active) {
+          setSubmission(result);
+          setSelectedIssueId(result.issue_id ? String(result.issue_id) : '');
+          const assignedReview = result.revisores?.[0];
+          if (assignedReview) {
+            setSelectedReviewerId(String(assignedReview.reviewer_id));
+            setReviewDeadline(assignedReview.fecha_limite ? String(assignedReview.fecha_limite).slice(0, 10) : '');
+          }
+        }
       })
       .catch((cause: unknown) => {
         if (active) {
@@ -211,6 +227,31 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     };
   }, [canManageSubmissions]);
 
+  useEffect(() => {
+    if (!canManageSubmissions) return;
+
+    let active = true;
+    setIssuesLoading(true);
+    setIssuesError(null);
+    getIssues()
+      .then((result) => {
+        if (active) setIssues(result);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setIssues([]);
+          setIssuesError(cause instanceof Error ? cause.message : 'No fue posible cargar los volúmenes.');
+        }
+      })
+      .finally(() => {
+        if (active) setIssuesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canManageSubmissions]);
+
   const returnToList = () => {
     if (onBack) {
       onBack();
@@ -225,6 +266,24 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           ? '/editor/submissions'
           : '/admin/submissions';
     navigate(basePath);
+  };
+
+  const deleteSubmission = async () => {
+    if (!id || !submission || deletingSubmission || user?.role !== 'admin') return;
+    if (!window.confirm(`¿Eliminar el envío "${submission.titulo || 'Sin título'}"? Esta acción no se puede deshacer.`)) {
+          return;
+    }
+
+    setDeletingSubmission(true);
+    try {
+          await submissionService.deleteSubmission(id);
+          toast.success('Envío eliminado correctamente.');
+          returnToList();
+    } catch (cause) {
+          toast.error(cause instanceof Error ? cause.message : 'No fue posible eliminar el envío.');
+    } finally {
+          setDeletingSubmission(false);
+    }
   };
 
   const handleFileDownload = async (file: Submission['archivos'][number]) => {
@@ -300,8 +359,6 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       const { submission: updatedSubmission } = await submissionService.getSubmissionById(id);
       setSubmission(updatedSubmission);
       await refreshAuditLogs();
-      setSelectedReviewerId('');
-      setReviewDeadline('');
       toast.success('Revisor asignado y fecha límite registrada.');
     } catch (cause) {
       console.error(`Error al asignar un revisor al envío ${id}:`, cause);
@@ -310,6 +367,71 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       toast.error(message);
     } finally {
       setSavingReviewAssignment(false);
+    }
+  };
+
+  const unassignReviewer = async () => {
+    if (!id || !submission?.revisores?.length || savingReviewAssignment) return;
+    setSavingReviewAssignment(true);
+    setReviewersError(null);
+    try {
+      await submissionService.assignReviewer(id, null);
+      const { submission: updatedSubmission } = await submissionService.getSubmissionById(id);
+      setSubmission(updatedSubmission);
+      setSelectedReviewerId('');
+      setReviewDeadline('');
+      await refreshAuditLogs();
+      toast.success('Revisor desasignado correctamente.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No fue posible desasignar el revisor.';
+      setReviewersError(message);
+      toast.error(message);
+    } finally {
+      setSavingReviewAssignment(false);
+    }
+  };
+
+  const assignIssue = async () => {
+    if (!id || !selectedIssueId || savingIssueAssignment) return;
+
+    const issueId = Number(selectedIssueId);
+    if (!Number.isInteger(issueId) || issueId <= 0) {
+      toast.error('Selecciona un volumen válido.');
+      return;
+    }
+
+    setSavingIssueAssignment(true);
+    setIssuesError(null);
+    try {
+      await assignSubmissionToIssue(id, issueId);
+      setSubmission((current) => current ? { ...current, issue_id: issueId } : current);
+      await refreshAuditLogs();
+      toast.success('Artículo asociado al volumen correctamente.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No fue posible asociar el volumen.';
+      setIssuesError(message);
+      toast.error(message);
+    } finally {
+      setSavingIssueAssignment(false);
+    }
+  };
+
+  const unassignIssue = async () => {
+    if (!id || !submission?.issue_id || savingIssueAssignment) return;
+    setSavingIssueAssignment(true);
+    setIssuesError(null);
+    try {
+      await assignSubmissionToIssue(id, null);
+      setSubmission((current) => current ? { ...current, issue_id: null } : current);
+      setSelectedIssueId('');
+      await refreshAuditLogs();
+      toast.success('Volumen desasignado correctamente.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No fue posible desasignar el volumen.';
+      setIssuesError(message);
+      toast.error(message);
+    } finally {
+      setSavingIssueAssignment(false);
     }
   };
 
@@ -384,13 +506,26 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto p-4">
-      <button
-        type="button"
-        onClick={returnToList}
-        className="order-1 inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
-      >
-        <ArrowLeft className="w-4 h-4" /> Volver a la lista
-      </button>
+      <div className="order-1 flex items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={returnToList}
+          className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-black"
+        >
+          <ArrowLeft className="w-4 h-4" /> Volver a la lista
+        </button>
+        {user?.role === 'admin' && (
+          <button
+            type="button"
+            onClick={() => void deleteSubmission()}
+            disabled={deletingSubmission}
+            className="inline-flex items-center gap-2 rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            {deletingSubmission ? 'Eliminando...' : 'Eliminar envío'}
+          </button>
+        )}
+      </div>
 
       <section className="order-2 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
@@ -619,6 +754,77 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       )}
 
       {canManageSubmissions && (
+        <section className="order-5 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
+            <BookOpen className="w-5 h-5" style={{ color: FESC_RED }} />
+            Volumen de publicación
+          </h2>
+          {issuesError && (
+            <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {issuesError}
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <label className="block text-sm font-medium text-gray-700">
+              Volumen disponible
+              <select
+                value={selectedIssueId}
+                onChange={(event) => setSelectedIssueId(event.target.value)}
+                disabled={issuesLoading || issues.length === 0 || savingIssueAssignment}
+                className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <option value="">
+                  {issuesLoading ? 'Cargando volúmenes...' : 'Seleccionar volumen'}
+                </option>
+                {issues.map((issue) => (
+                  <option key={issue.id} value={issue.id}>
+                    Vol. {issue.volume} · Núm. {issue.number} · {issue.year}
+                    {issue.title ? ` · ${issue.title}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void assignIssue()}
+                disabled={
+                  !selectedIssueId ||
+                  issuesLoading ||
+                  savingIssueAssignment ||
+                  (
+                    submission?.issue_id !== null &&
+                    submission?.issue_id !== undefined &&
+                    Number(selectedIssueId) === Number(submission.issue_id)
+                  )
+                }
+                className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: FESC_DARK_RED }}
+              >
+                {savingIssueAssignment
+                  ? 'Guardando...'
+                  : submission?.issue_id && Number(selectedIssueId) !== Number(submission.issue_id)
+                    ? 'Cambiar volumen'
+                    : submission?.issue_id
+                      ? 'Volumen asignado'
+                      : 'Asignar volumen'}
+              </button>
+              {submission?.issue_id && (
+                <button
+                  type="button"
+                  onClick={() => void unassignIssue()}
+                  disabled={savingIssueAssignment}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Desasignar
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {canManageSubmissions && (
         <section className="order-7 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -661,15 +867,33 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
               />
             </label>
-            <button
-              type="button"
-              onClick={() => void assignReviewer()}
-              disabled={!selectedReviewerId || !reviewDeadline || savingReviewAssignment || reviewersLoading}
-              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: FESC_DARK_RED }}
-            >
-              {savingReviewAssignment ? 'Asignando...' : 'Asignar revisor'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void assignReviewer()}
+                disabled={!selectedReviewerId || !reviewDeadline || savingReviewAssignment || reviewersLoading}
+                className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: FESC_DARK_RED }}
+              >
+                {savingReviewAssignment
+                  ? 'Guardando...'
+                  : submission?.revisores?.some((review) => String(review.reviewer_id) === selectedReviewerId)
+                    ? 'Actualizar revisor'
+                    : submission?.revisores?.length
+                      ? 'Cambiar revisor'
+                      : 'Asignar revisor'}
+              </button>
+              {(submission?.revisores?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void unassignReviewer()}
+                  disabled={savingReviewAssignment}
+                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Desasignar
+                </button>
+              )}
+            </div>
           </div>
         </section>
       )}
@@ -1097,6 +1321,7 @@ function formatAuditAction(action: string): string {
     status_updated: 'Actualización de estado',
     editor_assigned: 'Asignación de editor',
     reviewer_assigned: 'Asignación de revisor',
+    issue_assigned: 'Asignación de volumen',
   };
   return labels[action] || action.replace(/[_-]+/g, ' ');
 }

@@ -161,6 +161,7 @@ export interface SubmissionAuthor {
 
 export interface SubmissionDetail {
   id: string;
+  issue_id?: number | null;
   autor_nombre: string;
   autor_email: string;
   editor_id: string | null;
@@ -277,15 +278,16 @@ export const submissionService = {
     );
   },
 
-  assignReviewer: async (id: string, reviewerId: string, deadline: string) => {
+  assignReviewer: async (id: string, reviewerId: string | null, deadline?: string) => {
     return apiFetch<{ message: string; submissionId: string }>(
       `/submissions/${encodeURIComponent(id)}/assign-reviewer`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ reviewer_id: reviewerId, fecha_limite: deadline }),
+        body: JSON.stringify({ reviewer_id: reviewerId, fecha_limite: deadline || null }),
       }
     );
   },
+
 
   updateEditorialFields: async (
     id: string,

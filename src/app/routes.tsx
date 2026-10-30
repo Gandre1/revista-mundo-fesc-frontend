@@ -16,6 +16,7 @@ import { Profile } from './components/profile';
 import { Mensajeria } from './components/mensajeria';
 import { Navigate } from 'react-router';
 import { ProtectedRoute } from './components/protected-route';
+import { IssuesManagement } from './components/issues-management';
 
 // Admin
 function AdminRoot() {
@@ -84,6 +85,14 @@ function AdminMensajeriaPage() {
       <AdminLayout>
         <Mensajeria />
       </AdminLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AdminIssuesPage() {
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminLayout><IssuesManagement /></AdminLayout>
     </ProtectedRoute>
   );
 }
@@ -210,6 +219,14 @@ function EditorMensajeriaPage() {
   );
 }
 
+function EditorIssuesPage() {
+  return (
+    <ProtectedRoute allowedRoles={['editor']}>
+      <EditorLayout><IssuesManagement /></EditorLayout>
+    </ProtectedRoute>
+  );
+}
+
 // Revisor
 function RevisorRoot() {
   return (
@@ -311,6 +328,10 @@ export const router = createBrowserRouter([
     path: '/admin/mensajeria',
     element: <AdminMensajeriaPage />,
   },
+  {
+    path: '/admin/numeros',
+    element: <AdminIssuesPage />,
+  },
   // Autor routes
   {
     path: '/autor',
@@ -372,6 +393,10 @@ export const router = createBrowserRouter([
   {
     path: '/editor/mensajeria',
     element: <EditorMensajeriaPage />,
+  },
+  {
+    path: '/editor/numeros',
+    element: <EditorIssuesPage />,
   },
   // Revisor routes
   {
