@@ -113,7 +113,14 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [issuesError, setIssuesError] = useState<string | null>(null);
   const [selectedIssueId, setSelectedIssueId] = useState('');
   const [savingIssueAssignment, setSavingIssueAssignment] = useState(false);
+  const [doi, setDoi] = useState('');
+  const [pdfGalleyUrl, setPdfGalleyUrl] = useState('');
+  const [htmlGalleyUrl, setHtmlGalleyUrl] = useState('');
+  const [savingPublicationMetadata, setSavingPublicationMetadata] = useState(false);
+  const [publicationMetadataError, setPublicationMetadataError] = useState<string | null>(null);
+  const [editingPublicationMetadata, setEditingPublicationMetadata] = useState(false);
   const [deletingSubmission, setDeletingSubmission] = useState(false);
+  const [activeDetailTab, setActiveDetailTab] = useState<'resumen' | 'proceso' | 'publicacion' | 'historial'>('resumen');
   const isEditorRoute = location.pathname.startsWith('/editor');
 
   const refreshAuditLogs = useCallback(async () => {
@@ -178,6 +185,10 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         if (active) {
           setSubmission(result);
           setSelectedIssueId(result.issue_id ? String(result.issue_id) : '');
+          setDoi(result.doi || '');
+          setPdfGalleyUrl(result.pdf_galley_url || '');
+          setHtmlGalleyUrl(result.html_galley_url || '');
+          setEditingPublicationMetadata(!result.doi && !result.pdf_galley_url && !result.html_galley_url);
           const assignedReview = result.revisores?.[0];
           if (assignedReview) {
             setSelectedReviewerId(String(assignedReview.reviewer_id));
@@ -435,6 +446,39 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     }
   };
 
+  const savePublicationMetadata = async () => {
+    if (!id || savingPublicationMetadata) return;
+
+    setSavingPublicationMetadata(true);
+    setPublicationMetadataError(null);
+    try {
+      const response = await submissionService.updatePublicationMetadata(id, {
+        doi: doi.trim() || null,
+        pdf_galley_url: pdfGalleyUrl.trim() || null,
+        html_galley_url: htmlGalleyUrl.trim() || null,
+      });
+      const metadata = response.submission;
+      setSubmission((current) => current ? {
+        ...current,
+        doi: metadata.doi,
+        pdf_galley_url: metadata.pdf_galley_url,
+        html_galley_url: metadata.html_galley_url,
+      } : current);
+      setDoi(metadata.doi || '');
+      setPdfGalleyUrl(metadata.pdf_galley_url || '');
+      setHtmlGalleyUrl(metadata.html_galley_url || '');
+      setEditingPublicationMetadata(false);
+      await refreshAuditLogs();
+      toast.success('Metadatos de publicación guardados correctamente.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No fue posible guardar los metadatos.';
+      setPublicationMetadataError(message);
+      toast.error(message);
+    } finally {
+      setSavingPublicationMetadata(false);
+    }
+  };
+
   const confirmEditorialDecision = async () => {
     if (!id || !submission || !selectedDecision || savingDecision) return;
 
@@ -503,6 +547,11 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const visibleTimelineStage = selectedTimelineStage ?? Math.max(currentTimelineStage, 0);
   const currentStage = currentTimelineStage >= 0 ? EDITORIAL_STAGES[currentTimelineStage] : null;
   const currentStatus = submission.estado || submission.status || '';
+  const hasSavedPublicationMetadata = !!(
+    submission.doi ||
+    submission.pdf_galley_url ||
+    submission.html_galley_url
+  );
 
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto p-4">
@@ -544,6 +593,35 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </div>
       </section>
 
+      <nav className="order-3 overflow-x-auto rounded-lg border border-gray-200 bg-white p-2 shadow-sm" aria-label="Secciones del envío">
+        <div className="flex min-w-max gap-1">
+          {([
+            { id: 'resumen', label: 'Resumen' },
+            { id: 'proceso', label: 'Proceso editorial' },
+            ...(canManageSubmissions ? [
+              { id: 'publicacion', label: 'Publicación' },
+              { id: 'historial', label: 'Historial' },
+            ] : []),
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeDetailTab === tab.id}
+              onClick={() => setActiveDetailTab(tab.id)}
+              className="rounded-md px-4 py-2.5 text-sm font-semibold transition-colors"
+              style={{
+                backgroundColor: activeDetailTab === tab.id ? FESC_DARK_RED : 'transparent',
+                color: activeDetailTab === tab.id ? '#fff' : '#4b5563',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {activeDetailTab === 'proceso' && (
       <section className="order-8 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2" style={{ color: FESC_DARK_RED }}>
           <History className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -693,8 +771,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         )}
 
       </section>
+      )}
 
-      {canManageSubmissions && (
+      {activeDetailTab === 'historial' && canManageSubmissions && (
         <section className="order-9 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2
             className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2"
@@ -753,7 +832,94 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      {canManageSubmissions && (
+      {activeDetailTab === 'publicacion' && canManageSubmissions && (
+        <section className="order-4 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+          <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
+            <ExternalLink className="w-5 h-5" style={{ color: FESC_RED }} />
+            Metadatos de publicación y galeras
+          </h2>
+          {publicationMetadataError && (
+            <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {publicationMetadataError}
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label className="block text-sm font-medium text-gray-700">
+              DOI
+              <input
+                type="text"
+                value={doi}
+                onChange={(event) => setDoi(event.target.value)}
+                placeholder="10.1234/ejemplo.2026"
+                disabled={savingPublicationMetadata || (hasSavedPublicationMetadata && !editingPublicationMetadata)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              PDF
+              <input
+                type="url"
+                value={pdfGalleyUrl}
+                onChange={(event) => setPdfGalleyUrl(event.target.value)}
+                placeholder="https://revista.example.org/articulo.pdf"
+                disabled={savingPublicationMetadata || (hasSavedPublicationMetadata && !editingPublicationMetadata)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              HTML
+              <input
+                type="url"
+                value={htmlGalleyUrl}
+                onChange={(event) => setHtmlGalleyUrl(event.target.value)}
+                placeholder="https://revista.example.org/articulo"
+                disabled={savingPublicationMetadata || (hasSavedPublicationMetadata && !editingPublicationMetadata)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const hasSavedMetadata = !!(
+                  submission.doi ||
+                  submission.pdf_galley_url ||
+                  submission.html_galley_url
+                );
+                if (hasSavedMetadata && !editingPublicationMetadata) {
+                  setEditingPublicationMetadata(true);
+                  return;
+                }
+                void savePublicationMetadata();
+              }}
+              disabled={savingPublicationMetadata}
+              className="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ backgroundColor: FESC_DARK_RED }}
+            >
+              {savingPublicationMetadata
+                ? 'Guardando...'
+                : submission.doi || submission.pdf_galley_url || submission.html_galley_url
+                  ? editingPublicationMetadata
+                    ? 'Guardar cambios'
+                    : 'Editar metadatos'
+                  : 'Guardar metadatos'}
+            </button>
+            {submission.pdf_galley_url && (
+              <a href={submission.pdf_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
+                <Download className="h-4 w-4" /> Abrir PDF
+              </a>
+            )}
+            {submission.html_galley_url && (
+              <a href={submission.html_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
+                <ExternalLink className="h-4 w-4" /> Abrir HTML
+              </a>
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeDetailTab === 'publicacion' && canManageSubmissions && (
         <section className="order-5 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <BookOpen className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -824,7 +990,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      {canManageSubmissions && (
+      {activeDetailTab === 'proceso' && canManageSubmissions && (
         <section className="order-7 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <ClipboardList className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -898,7 +1064,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
-      {canManageSubmissions && (
+      {activeDetailTab === 'proceso' && canManageSubmissions && (
         <section className="order-6 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-3 mb-4 flex items-center gap-2">
             <Scale className="w-5 h-5" style={{ color: FESC_RED }} />
@@ -937,6 +1103,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
         </section>
       )}
 
+      {activeDetailTab === 'resumen' && (
       <section className="order-3 bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
         <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
           <BookOpen className="w-5 h-5" style={{ color: FESC_RED }} /> Información del artículo
@@ -946,7 +1113,22 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           <DetailField label="Idioma" value={submission.idioma} />
           <DetailField label="Palabras clave" value={submission.palabras_clave} />
           <DetailField label="Paso del envío" value={String(submission.paso_wizard)} />
+          <DetailField label="DOI" value={submission.doi} />
         </div>
+        {(submission.pdf_galley_url || submission.html_galley_url) && (
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
+            {submission.pdf_galley_url && (
+              <a href={submission.pdf_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
+                <Download className="h-4 w-4" /> PDF
+              </a>
+            )}
+            {submission.html_galley_url && (
+              <a href={submission.html_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
+                <ExternalLink className="h-4 w-4" /> HTML
+              </a>
+            )}
+          </div>
+        )}
         <div className="mt-5">
           <h3 className="text-xs font-bold text-gray-600 uppercase mb-2">Resumen</h3>
           <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
@@ -960,7 +1142,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           </p>
         </div>
       </section>
+      )}
 
+      {activeDetailTab === 'resumen' && (
       <div className="order-4 grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
           <h2 className="font-semibold text-lg border-b pb-2 mb-4 flex items-center gap-2">
@@ -1055,8 +1239,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           )}
         </section>
       </div>
+      )}
 
-      {previewFile && (
+      {activeDetailTab === 'resumen' && previewFile && (
         <section
           ref={previewContainerRef}
           className={`order-5 bg-white rounded-lg border border-gray-200 shadow-sm ${
@@ -1318,12 +1503,15 @@ function formatDate(value: string | null): string {
 
 function formatAuditAction(action: string): string {
   const labels: Record<string, string> = {
+    submission_created: 'Creación del envío',
+    submission_updated: 'Actualización del envío',
     status_updated: 'Actualización de estado',
     editor_assigned: 'Asignación de editor',
     reviewer_assigned: 'Asignación de revisor',
     issue_assigned: 'Asignación de volumen',
+    metadata_updated: 'Actualización de metadatos',
   };
-  return labels[action] || action.replace(/[_-]+/g, ' ');
+  return labels[action] || 'Actividad del envío';
 }
 
 function formatFileSize(bytes: number): string {

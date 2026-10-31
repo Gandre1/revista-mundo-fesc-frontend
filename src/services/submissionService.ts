@@ -162,6 +162,9 @@ export interface SubmissionAuthor {
 export interface SubmissionDetail {
   id: string;
   issue_id?: number | null;
+  doi: string | null;
+  pdf_galley_url: string | null;
+  html_galley_url: string | null;
   autor_nombre: string;
   autor_email: string;
   editor_id: string | null;
@@ -295,6 +298,19 @@ export const submissionService = {
   ) => {
     return apiFetch<{ message: string; submissionId: string }>(
       `/submissions/${encodeURIComponent(id)}/editorial`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updatePublicationMetadata: async (
+    id: string,
+    data: { doi?: string | null; pdf_galley_url?: string | null; html_galley_url?: string | null }
+  ) => {
+    return apiFetch<{ message: string; submissionId: string; submission: SubmissionDetail }>(
+      `/submissions/${encodeURIComponent(id)}/metadata`,
       {
         method: 'PATCH',
         body: JSON.stringify(data),
