@@ -7,7 +7,8 @@ export interface Issue {
   year: number;
   title: string | null;
   description: string | null;
-  status: 'draft' | 'published';
+  status: 'draft' | 'scheduled' | 'published';
+  published_at?: string | null;
   created_at?: string;
 }
 
@@ -21,7 +22,8 @@ export interface CreateIssuePayload {
   year: number;
   title: string;
   description?: string | null;
-  status: 'draft' | 'published';
+  status: 'draft' | 'scheduled' | 'published';
+  published_at?: string | null;
 }
 
 export async function getIssues(): Promise<Issue[]> {

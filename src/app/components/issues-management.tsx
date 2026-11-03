@@ -21,6 +21,27 @@ const initialForm: CreateIssuePayload = {
   title: '',
   description: '',
   status: 'draft',
+  published_at: null,
+};
+
+const toDateTimeLocal = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value.includes(' ') ? value.replace(' ', 'T') : value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+};
+
+const statusLabels: Record<Issue['status'], string> = {
+  draft: 'Borrador',
+  scheduled: 'Programado',
+  published: 'Publicado',
+};
+
+const statusClasses: Record<Issue['status'], string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  scheduled: 'bg-blue-100 text-blue-700',
+  published: 'bg-green-100 text-green-700',
 };
 
 export function IssuesManagement() {
@@ -31,6 +52,7 @@ export function IssuesManagement() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<CreateIssuePayload>(initialForm);
   const [editingIssueId, setEditingIssueId] = useState<number | null>(null);
+  const [deletingIssueId, setDeletingIssueId] = useState<number | null>(null);
 
   const loadIssues = async () => {
     setLoading(true);
@@ -52,12 +74,20 @@ export function IssuesManagement() {
     event.preventDefault();
     setSaving(true);
     try {
+      const payload: CreateIssuePayload = {
+        ...form,
+        published_at: form.status === 'draft'
+          ? null
+          : form.published_at
+            ? new Date(form.published_at).toISOString()
+            : null,
+      };
       if (editingIssueId) {
-        const updated = await updateIssue(editingIssueId, form);
+        const updated = await updateIssue(editingIssueId, payload);
         setIssues((current) => current.map((issue) => issue.id === editingIssueId ? updated : issue));
         toast.success('Número actualizado correctamente.');
       } else {
-        const created = await createIssue(form);
+        const created = await createIssue(payload);
         setIssues((current) => [created, ...current].sort((a, b) =>
           b.year - a.year || b.volume - a.volume || b.number - a.number
         ));
@@ -88,18 +118,22 @@ export function IssuesManagement() {
       title: issue.title || '',
       description: issue.description || '',
       status: issue.status,
+      published_at: toDateTimeLocal(issue.published_at),
     });
     setDialogOpen(true);
   };
 
   const handleDelete = async (issue: Issue) => {
     if (!window.confirm(`¿Eliminar el volumen ${issue.volume}, número ${issue.number} (${issue.year})?`)) return;
+    setDeletingIssueId(issue.id);
     try {
       await deleteIssue(issue.id);
       setIssues((current) => current.filter((item) => item.id !== issue.id));
       toast.success('Número eliminado correctamente.');
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'No fue posible eliminar el número.');
+    } finally {
+      setDeletingIssueId(null);
     }
   };
 
@@ -146,11 +180,22 @@ export function IssuesManagement() {
               </label>
               <label className="text-sm block">Estado
                 <select className="mt-1 h-9 w-full rounded-md border px-3 bg-white" value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value as 'draft' | 'published' })}>
+                  onChange={(e) => setForm({ ...form, status: e.target.value as CreateIssuePayload['status'] })}>
                   <option value="draft">Borrador</option>
+                  <option value="scheduled">Programado</option>
                   <option value="published">Publicado</option>
                 </select>
               </label>
+              {form.status !== 'draft' && (
+                <label className="text-sm block">Fecha y hora de publicación
+                  <Input
+                    type="datetime-local"
+                    required
+                    value={form.published_at || ''}
+                    onChange={(e) => setForm({ ...form, published_at: e.target.value })}
+                  />
+                </label>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancelar</Button>
                 <Button type="submit" disabled={saving}>
@@ -177,18 +222,24 @@ export function IssuesManagement() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs rounded-full px-2 py-1 ${issue.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {issue.status === 'published' ? 'Publicado' : 'Borrador'}
+                  <span className={`text-xs rounded-full px-2 py-1 ${statusClasses[issue.status] || statusClasses.draft}`}>
+                    {statusLabels[issue.status] || 'Borrador'}
                   </span>
                   <Button type="button" variant="outline" size="icon" title="Editar número" onClick={() => openEditDialog(issue)}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button type="button" variant="outline" size="icon" title="Eliminar número" onClick={() => void handleDelete(issue)}>
-                    <Trash2 className="h-4 w-4 text-red-700" />
+                  <Button type="button" variant="outline" size="icon" title="Eliminar número" disabled={deletingIssueId === issue.id} onClick={() => void handleDelete(issue)}>
+                    {deletingIssueId === issue.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-red-700" />}
                   </Button>
                 </div>
               </div>
               {issue.description && <p className="mt-4 text-sm text-gray-600">{issue.description}</p>}
+              {issue.published_at && (
+                <p className="mt-3 text-xs text-gray-500">
+                  {issue.status === 'scheduled' ? 'Programado para: ' : 'Fecha de publicación: '}
+                  {new Date(issue.published_at.includes(' ') ? issue.published_at.replace(' ', 'T') : issue.published_at).toLocaleString()}
+                </p>
+              )}
             </article>
           ))}
           {issues.length === 0 && <p className="text-gray-500">No hay volúmenes registrados.</p>}
