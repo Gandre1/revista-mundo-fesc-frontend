@@ -7,6 +7,7 @@ export interface Issue {
   year: number;
   title: string | null;
   description: string | null;
+  cover_url?: string | null;
   status: 'draft' | 'scheduled' | 'published';
   published_at?: string | null;
   created_at?: string;
@@ -51,6 +52,19 @@ export async function deleteIssue(issueId: number): Promise<void> {
   await apiFetch<{ message: string }>(`/issues/${encodeURIComponent(issueId)}`, {
     method: 'DELETE',
   });
+}
+
+export async function uploadIssueCover(issueId: number, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('cover', file);
+  const response = await apiFetch<{ cover_url: string }>(
+    `/issues/${encodeURIComponent(issueId)}/cover`,
+    {
+      method: 'PATCH',
+      body: formData,
+    }
+  );
+  return response.cover_url;
 }
 
 export async function assignSubmissionToIssue(

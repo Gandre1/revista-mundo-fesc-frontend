@@ -17,6 +17,8 @@ import { Mensajeria } from './components/mensajeria';
 import { Navigate } from 'react-router';
 import { ProtectedRoute } from './components/protected-route';
 import { IssuesManagement } from './components/issues-management';
+import { PublicArchive } from './components/public-archive';
+import { PublicSubmissionDetailPage } from './components/public-submission-detail';
 
 // Admin
 function AdminRoot() {
@@ -281,7 +283,19 @@ function RevisorMensajeriaPage() {
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/login" replace />,
+    element: <PublicArchive />,
+  },
+  {
+    path: '/public/issues',
+    element: <PublicArchive />,
+  },
+  {
+    path: '/public/issues/:id',
+    element: <PublicArchive />,
+  },
+  {
+    path: '/public/submissions/:id',
+    element: <PublicSubmissionDetailPage />,
   },
   {
     path: '/login',

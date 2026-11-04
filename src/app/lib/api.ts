@@ -1,5 +1,16 @@
 export const API_URL = (import.meta as any).env?.VITE_API_URL;
 
+export function getApiOrigin(): string {
+  if (typeof API_URL === 'string' && API_URL.trim()) {
+    try {
+      return new URL(API_URL.trim()).origin;
+    } catch {
+      return window.location.origin;
+    }
+  }
+  return window.location.origin;
+}
+
 export function getApiAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
   if (token) return { Authorization: `Bearer ${token}` };

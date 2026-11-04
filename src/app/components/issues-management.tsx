@@ -8,11 +8,13 @@ import {
   Issue,
   CreateIssuePayload,
   updateIssue,
+  uploadIssueCover,
 } from '../../services/issueService';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
+import { getApiOrigin } from '../lib/api';
 
 const initialForm: CreateIssuePayload = {
   volume: 1,
@@ -44,6 +46,11 @@ const statusClasses: Record<Issue['status'], string> = {
   published: 'bg-green-100 text-green-700',
 };
 
+const getCoverUrl = (coverUrl?: string | null) => {
+  if (!coverUrl) return null;
+  return coverUrl.startsWith('http') ? coverUrl : `${getApiOrigin()}${coverUrl}`;
+};
+
 export function IssuesManagement() {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +60,8 @@ export function IssuesManagement() {
   const [form, setForm] = useState<CreateIssuePayload>(initialForm);
   const [editingIssueId, setEditingIssueId] = useState<number | null>(null);
   const [deletingIssueId, setDeletingIssueId] = useState<number | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   const loadIssues = async () => {
     setLoading(true);
@@ -84,10 +93,17 @@ export function IssuesManagement() {
       };
       if (editingIssueId) {
         const updated = await updateIssue(editingIssueId, payload);
+        if (coverFile) {
+          updated.cover_url = await uploadIssueCover(editingIssueId, coverFile);
+        } else {
+          const existing = issues.find((issue) => issue.id === editingIssueId);
+          updated.cover_url = existing?.cover_url || null;
+        }
         setIssues((current) => current.map((issue) => issue.id === editingIssueId ? updated : issue));
         toast.success('Número actualizado correctamente.');
       } else {
         const created = await createIssue(payload);
+        if (coverFile) created.cover_url = await uploadIssueCover(created.id, coverFile);
         setIssues((current) => [created, ...current].sort((a, b) =>
           b.year - a.year || b.volume - a.volume || b.number - a.number
         ));
@@ -95,6 +111,8 @@ export function IssuesManagement() {
       }
       setForm(initialForm);
       setEditingIssueId(null);
+      setCoverFile(null);
+      setCoverPreview(null);
       setDialogOpen(false);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'No fue posible guardar el número.');
@@ -106,6 +124,8 @@ export function IssuesManagement() {
   const openCreateDialog = () => {
     setEditingIssueId(null);
     setForm(initialForm);
+    setCoverFile(null);
+    setCoverPreview(null);
     setDialogOpen(true);
   };
 
@@ -120,6 +140,8 @@ export function IssuesManagement() {
       status: issue.status,
       published_at: toDateTimeLocal(issue.published_at),
     });
+    setCoverFile(null);
+    setCoverPreview(getCoverUrl(issue.cover_url));
     setDialogOpen(true);
   };
 
@@ -178,6 +200,21 @@ export function IssuesManagement() {
                 <Textarea value={form.description || ''}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </label>
+              <label className="text-sm block">Portada del número
+                <Input
+                  className="mt-1"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setCoverFile(file);
+                    setCoverPreview(file ? URL.createObjectURL(file) : null);
+                  }}
+                />
+              </label>
+              {coverPreview && (
+                <img src={coverPreview} alt="Vista previa de la portada" className="h-44 w-32 rounded-md object-cover border" />
+              )}
               <label className="text-sm block">Estado
                 <select className="mt-1 h-9 w-full rounded-md border px-3 bg-white" value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value as CreateIssuePayload['status'] })}>
@@ -215,7 +252,11 @@ export function IssuesManagement() {
             <article key={issue.id} className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between">
                 <div className="flex gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center"><BookOpen className="text-red-600" /></div>
+                  {getCoverUrl(issue.cover_url) ? (
+                    <img src={getCoverUrl(issue.cover_url)!} alt={`Portada de ${issue.title || `Volumen ${issue.volume}`}`} className="h-20 w-14 rounded-md border object-cover" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center"><BookOpen className="text-red-600" /></div>
+                  )}
                   <div>
                     <h2 className="font-semibold text-gray-900">{issue.title || `Volumen ${issue.volume}`}</h2>
                     <p className="text-sm text-gray-500">Vol. {issue.volume} · Núm. {issue.number} · {issue.year}</p>
