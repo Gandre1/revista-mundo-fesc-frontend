@@ -1,5 +1,28 @@
 import { apiFetch, API_URL, getApiAuthHeaders } from '../app/lib/api';
 
+export function getSubmissionScieloXmlUrl(submissionId: string): string {
+  return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
+}
+
+export function getOaiListRecordsUrl(): string {
+  return `${API_URL}/oai?verb=ListRecords&metadataPrefix=oai_dc`;
+}
+
+export async function downloadSubmissionScieloXml(submissionId: string): Promise<void> {
+  const response = await fetch(getSubmissionScieloXmlUrl(submissionId));
+  if (!response.ok) throw new Error(`No fue posible descargar el XML: ${response.status}`);
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `submission-${submissionId}-scielo.xml`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export interface SubmissionPayload {
   titulo: string;
   resumen: string;
@@ -162,6 +185,8 @@ export interface SubmissionAuthor {
 export interface SubmissionDetail {
   id: string;
   issue_id?: number | null;
+  issue_status?: string | null;
+  issue_published_at?: string | null;
   doi: string | null;
   pdf_galley_url: string | null;
   html_galley_url: string | null;

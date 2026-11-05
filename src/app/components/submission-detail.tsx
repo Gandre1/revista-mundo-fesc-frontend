@@ -31,6 +31,8 @@ import {
 import { toast } from 'sonner';
 import { useAuth } from './auth-context';
 import {
+  getSubmissionScieloXmlUrl,
+  downloadSubmissionScieloXml,
   ReviewerSummary,
   submissionService,
   SubmissionAuditLog,
@@ -122,6 +124,26 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [deletingSubmission, setDeletingSubmission] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState<'resumen' | 'proceso' | 'publicacion' | 'historial'>('resumen');
   const isEditorRoute = location.pathname.startsWith('/editor');
+
+  const normalizedSubmissionStatus = normalizeSubmissionStatus(
+    submission?.estado || submission?.status
+  );
+  const hasPublicationMetadata = Boolean(
+    submission?.doi ||
+    submission?.pdf_galley_url ||
+    submission?.html_galley_url
+  );
+  const hasPublishedIssue =
+    submission?.issue_status === 'published' ||
+    (
+      submission?.issue_status === 'scheduled' &&
+      !!submission.issue_published_at &&
+      new Date(submission.issue_published_at.replace(' ', 'T')).getTime() <= Date.now()
+    );
+  const scieloExportEnabled =
+    normalizedSubmissionStatus === 'publicado' &&
+    hasPublishedIssue &&
+    hasPublicationMetadata;
 
   const refreshAuditLogs = useCallback(async () => {
     if (!id || !canManageSubmissions) return;
@@ -915,6 +937,26 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
                 <ExternalLink className="h-4 w-4" /> Abrir HTML
               </a>
             )}
+            <button
+              type="button"
+              onClick={() => window.open(getSubmissionScieloXmlUrl(submission.id), '_blank', 'noopener,noreferrer')}
+              disabled={!scieloExportEnabled}
+              className="inline-flex items-center gap-1 text-sm font-semibold text-[#9c0f06] hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+            >
+              <ExternalLink className="h-4 w-4" /> Previsualizar XML SciELO / JATS
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void downloadSubmissionScieloXml(submission.id).catch((cause: unknown) => {
+                  toast.error(cause instanceof Error ? cause.message : 'No fue posible descargar el XML.');
+                });
+              }}
+              disabled={!scieloExportEnabled}
+              className="inline-flex items-center gap-1 text-sm font-semibold text-[#9c0f06] hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+            >
+              <Download className="h-4 w-4" /> Descargar XML SciELO
+            </button>
           </div>
         </section>
       )}

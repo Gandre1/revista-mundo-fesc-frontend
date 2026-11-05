@@ -4,6 +4,7 @@ import { BookOpen, Search } from 'lucide-react';
 import {
   getPublicIssue,
   getPublicIssues,
+  getOaiListRecordsUrl,
   PublicArticle,
   PublicIssueDetail,
 } from '../../services/publicService';
@@ -192,6 +193,15 @@ export function PublicArchive() {
               <span>English</span>
               <span>Español</span>
             </nav>
+            <h2 className="mt-5 text-base font-bold text-slate-700">Metadatos</h2>
+            <a
+              href={getOaiListRecordsUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 block text-sm font-semibold text-[#e30513] hover:underline"
+            >
+              Feed OAI-PMH Dublin Core
+            </a>
           </aside>
         </div>
       </div>

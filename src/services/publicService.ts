@@ -1,4 +1,4 @@
-import { apiFetch } from '../app/lib/api';
+import { apiFetch, API_URL } from '../app/lib/api';
 import type { Issue } from './issueService';
 
 export interface PublicArticleAuthor {
@@ -37,6 +37,29 @@ export interface PublicIssueDetail {
 export interface PublicSubmissionDetail {
   article: PublicArticle;
   issue: Issue;
+}
+
+export function getScieloXmlUrl(submissionId: string): string {
+  return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
+}
+
+export function getOaiListRecordsUrl(): string {
+  return `${API_URL}/oai?verb=ListRecords&metadataPrefix=oai_dc`;
+}
+
+export async function downloadScieloXml(submissionId: string): Promise<void> {
+  const response = await fetch(getScieloXmlUrl(submissionId));
+  if (!response.ok) throw new Error(`No fue posible descargar el XML: ${response.status}`);
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `submission-${submissionId}-scielo.xml`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export async function getPublicIssues(): Promise<Issue[]> {
