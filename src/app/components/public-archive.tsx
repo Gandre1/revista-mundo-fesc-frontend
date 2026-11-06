@@ -4,12 +4,11 @@ import { BookOpen, Search } from 'lucide-react';
 import {
   getPublicIssue,
   getPublicIssues,
-  getOaiListRecordsUrl,
   PublicArticle,
   PublicIssueDetail,
 } from '../../services/publicService';
 import type { Issue } from '../../services/issueService';
-import { getApiOrigin } from '../lib/api';
+import { getApiOrigin, resolveApiUrl } from '../lib/api';
 
 export function PublicArchive() {
   const { id } = useParams();
@@ -165,17 +164,16 @@ export function PublicArchive() {
                       {article.authors.map((author) => `${author.nombre} ${author.apellidos}`.trim()).join(', ')}
                     </p>
                   )}
-                  {article.resumen && <p className="mt-3 text-sm leading-6 text-slate-700">{article.resumen}</p>}
                   <div className="mt-4 flex flex-wrap gap-3">
                     {article.doi && <span className="text-sm text-slate-600">DOI: {article.doi}</span>}
                     {article.pdf_galley_url && (
-                      <a href={article.pdf_galley_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#e30513]">
-                        Galera PDF
+                      <a href={resolveApiUrl(article.pdf_galley_url) || undefined} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#e30513]">
+                        PDF
                       </a>
                     )}
                     {article.html_galley_url && (
-                      <a href={article.html_galley_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#e30513]">
-                        Galera HTML
+                      <a href={resolveApiUrl(article.html_galley_url) || undefined} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#e30513]">
+                        HTML
                       </a>
                     )}
                   </div>
@@ -193,15 +191,6 @@ export function PublicArchive() {
               <span>English</span>
               <span>Español</span>
             </nav>
-            <h2 className="mt-5 text-base font-bold text-slate-700">Metadatos</h2>
-            <a
-              href={getOaiListRecordsUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 block text-sm font-semibold text-[#e30513] hover:underline"
-            >
-              Feed OAI-PMH Dublin Core
-            </a>
           </aside>
         </div>
       </div>

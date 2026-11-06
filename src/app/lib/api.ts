@@ -11,6 +11,18 @@ export function getApiOrigin(): string {
   return window.location.origin;
 }
 
+export function resolveApiUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${getApiOrigin()}${url}`;
+  return url;
+}
+
+export function isPublicGalleyUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /\/api\/public\/submissions\/[^/]+\/galley\/(pdf|html)(?:[/?#]|$)/i.test(url);
+}
+
 export function getApiAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
   if (token) return { Authorization: `Bearer ${token}` };

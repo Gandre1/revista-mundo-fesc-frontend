@@ -24,8 +24,6 @@ const STATUS_FILTERS = [
   { value: 'enviado', label: 'Enviado' },
   { value: 'en_revision', label: 'En revisión' },
   { value: 'revisiones_requeridas', label: 'Ajustes solicitados' },
-  { value: 'evaluado', label: 'Evaluado' },
-  { value: 'aceptado', label: 'Aceptado' },
   { value: 'rechazado', label: 'Rechazado' },
   { value: 'publicado', label: 'Publicado' },
 ];

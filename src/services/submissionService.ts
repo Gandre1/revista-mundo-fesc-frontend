@@ -4,9 +4,6 @@ export function getSubmissionScieloXmlUrl(submissionId: string): string {
   return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
 }
 
-export function getOaiListRecordsUrl(): string {
-  return `${API_URL}/oai?verb=ListRecords&metadataPrefix=oai_dc`;
-}
 
 export async function downloadSubmissionScieloXml(submissionId: string): Promise<void> {
   const response = await fetch(getSubmissionScieloXmlUrl(submissionId));
@@ -340,6 +337,19 @@ export const submissionService = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }
+    );
+  },
+
+  updatePublicationGalleys: async (
+    id: string,
+    files: { pdf?: File; html?: File }
+  ) => {
+    const formData = new FormData();
+    if (files.pdf) formData.append('pdf', files.pdf);
+    if (files.html) formData.append('html', files.html);
+    return apiFetch<{ message: string; submissionId: string; submission: SubmissionDetail }>(
+      `/submissions/${encodeURIComponent(id)}/galleys`,
+      { method: 'PATCH', body: formData },
     );
   },
 

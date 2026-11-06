@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from './auth-context';
+import { isPublicGalleyUrl, resolveApiUrl } from '../lib/api';
 import {
   getSubmissionScieloXmlUrl,
   downloadSubmissionScieloXml,
@@ -60,7 +61,7 @@ const FESC_DARK_RED = '#9c0f06';
 const EDITORIAL_DECISIONS = [
   { status: 'en_revision', label: 'Aprobar para evaluación', Icon: ClipboardCheck, color: '#1d4ed8' },
   { status: 'revisiones_requeridas', label: 'Solicitar correcciones', Icon: MessageSquareText, color: '#c2410c' },
-  { status: 'aceptado', label: 'Aceptar artículo', Icon: CheckCircle, color: '#15803d' },
+  { status: 'publicado', label: 'Publicar artículo', Icon: CheckCircle, color: '#15803d' },
   { status: 'rechazado', label: 'Rechazar artículo', Icon: ThumbsDown, color: '#b91c1c' },
 ] as const;
 
@@ -68,7 +69,6 @@ const EDITORIAL_STAGES = [
   { label: 'Enviado', description: 'El artículo fue recibido por la revista.', Icon: Send },
   { label: 'En revisión', description: 'El equipo editorial coordina la evaluación del artículo.', Icon: ClipboardCheck },
   { label: 'Decisión editorial', description: 'La decisión editorial se comunica al autor.', Icon: Scale },
-  { label: 'Aceptado / En edición', description: 'El artículo aceptado avanza hacia su preparación editorial.', Icon: BookOpen },
   { label: 'Publicado', description: 'El artículo está disponible en la revista.', Icon: Check },
 ];
 
@@ -118,6 +118,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [doi, setDoi] = useState('');
   const [pdfGalleyUrl, setPdfGalleyUrl] = useState('');
   const [htmlGalleyUrl, setHtmlGalleyUrl] = useState('');
+  const [pdfGalleyFile, setPdfGalleyFile] = useState<File | null>(null);
+  const [htmlGalleyFile, setHtmlGalleyFile] = useState<File | null>(null);
   const [savingPublicationMetadata, setSavingPublicationMetadata] = useState(false);
   const [publicationMetadataError, setPublicationMetadataError] = useState<string | null>(null);
   const [editingPublicationMetadata, setEditingPublicationMetadata] = useState(false);
@@ -130,8 +132,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   );
   const hasPublicationMetadata = Boolean(
     submission?.doi ||
-    submission?.pdf_galley_url ||
-    submission?.html_galley_url
+    isPublicGalleyUrl(submission?.pdf_galley_url) ||
+    isPublicGalleyUrl(submission?.html_galley_url)
   );
   const hasPublishedIssue =
     submission?.issue_status === 'published' ||
@@ -474,21 +476,30 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     setSavingPublicationMetadata(true);
     setPublicationMetadataError(null);
     try {
-      const response = await submissionService.updatePublicationMetadata(id, {
+      let metadataSubmission: SubmissionDetail | null = null;
+      if (pdfGalleyFile || htmlGalleyFile) {
+        const galleyResponse = await submissionService.updatePublicationGalleys(id, {
+          pdf: pdfGalleyFile || undefined,
+          html: htmlGalleyFile || undefined,
+        });
+        metadataSubmission = galleyResponse.submission;
+      }
+      const metadataData: { doi?: string | null } = {
         doi: doi.trim() || null,
-        pdf_galley_url: pdfGalleyUrl.trim() || null,
-        html_galley_url: htmlGalleyUrl.trim() || null,
-      });
+      };
+      const response = await submissionService.updatePublicationMetadata(id, metadataData);
       const metadata = response.submission;
       setSubmission((current) => current ? {
         ...current,
         doi: metadata.doi,
-        pdf_galley_url: metadata.pdf_galley_url,
-        html_galley_url: metadata.html_galley_url,
+        pdf_galley_url: metadataSubmission?.pdf_galley_url || metadata.pdf_galley_url,
+        html_galley_url: metadataSubmission?.html_galley_url || metadata.html_galley_url,
       } : current);
       setDoi(metadata.doi || '');
-      setPdfGalleyUrl(metadata.pdf_galley_url || '');
-      setHtmlGalleyUrl(metadata.html_galley_url || '');
+      setPdfGalleyUrl(metadataSubmission?.pdf_galley_url || metadata.pdf_galley_url || '');
+      setHtmlGalleyUrl(metadataSubmission?.html_galley_url || metadata.html_galley_url || '');
+      setPdfGalleyFile(null);
+      setHtmlGalleyFile(null);
       setEditingPublicationMetadata(false);
       await refreshAuditLogs();
       toast.success('Metadatos de publicación guardados correctamente.');
@@ -571,8 +582,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const currentStatus = submission.estado || submission.status || '';
   const hasSavedPublicationMetadata = !!(
     submission.doi ||
-    submission.pdf_galley_url ||
-    submission.html_galley_url
+    isPublicGalleyUrl(submission.pdf_galley_url) ||
+    isPublicGalleyUrl(submission.html_galley_url)
   );
 
   return (
@@ -878,26 +889,36 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               />
             </label>
             <label className="block text-sm font-medium text-gray-700">
-              PDF
+              Galera PDF
               <input
-                type="url"
-                value={pdfGalleyUrl}
-                onChange={(event) => setPdfGalleyUrl(event.target.value)}
-                placeholder="https://revista.example.org/articulo.pdf"
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(event) => setPdfGalleyFile(event.target.files?.[0] || null)}
                 disabled={savingPublicationMetadata || (hasSavedPublicationMetadata && !editingPublicationMetadata)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
               />
+              {pdfGalleyFile ? (
+                <span className="mt-1 block text-xs text-slate-500">{pdfGalleyFile.name}</span>
+              ) : (
+                files.some((file) => /\.pdf$/i.test(file.nombre_original || '') || file.tipo?.toLowerCase() === 'pdf') && (
+                  <span className="mt-1 block text-xs text-slate-500">
+                    Se usará el PDF enviado por el autor automáticamente.
+                  </span>
+                )
+              )}
             </label>
             <label className="block text-sm font-medium text-gray-700">
-              HTML
+              Galera HTML
               <input
-                type="url"
-                value={htmlGalleyUrl}
-                onChange={(event) => setHtmlGalleyUrl(event.target.value)}
-                placeholder="https://revista.example.org/articulo"
+                type="file"
+                accept=".html,.htm,text/html"
+                onChange={(event) => setHtmlGalleyFile(event.target.files?.[0] || null)}
                 disabled={savingPublicationMetadata || (hasSavedPublicationMetadata && !editingPublicationMetadata)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
               />
+              {htmlGalleyFile && (
+                <span className="mt-1 block text-xs text-slate-500">{htmlGalleyFile.name}</span>
+              )}
             </label>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -906,8 +927,8 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
               onClick={() => {
                 const hasSavedMetadata = !!(
                   submission.doi ||
-                  submission.pdf_galley_url ||
-                  submission.html_galley_url
+                  isPublicGalleyUrl(submission.pdf_galley_url) ||
+                  isPublicGalleyUrl(submission.html_galley_url)
                 );
                 if (hasSavedMetadata && !editingPublicationMetadata) {
                   setEditingPublicationMetadata(true);
@@ -921,19 +942,19 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             >
               {savingPublicationMetadata
                 ? 'Guardando...'
-                : submission.doi || submission.pdf_galley_url || submission.html_galley_url
+                : submission.doi || isPublicGalleyUrl(submission.pdf_galley_url) || isPublicGalleyUrl(submission.html_galley_url)
                   ? editingPublicationMetadata
                     ? 'Guardar cambios'
                     : 'Editar metadatos'
                   : 'Guardar metadatos'}
             </button>
-            {submission.pdf_galley_url && (
-              <a href={submission.pdf_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
+            {isPublicGalleyUrl(submission.pdf_galley_url) && (
+              <a href={resolveApiUrl(submission.pdf_galley_url) || undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
                 <Download className="h-4 w-4" /> Abrir PDF
               </a>
             )}
-            {submission.html_galley_url && (
-              <a href={submission.html_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
+            {isPublicGalleyUrl(submission.html_galley_url) && (
+              <a href={resolveApiUrl(submission.html_galley_url) || undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:underline">
                 <ExternalLink className="h-4 w-4" /> Abrir HTML
               </a>
             )}
@@ -1157,15 +1178,15 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
           <DetailField label="Paso del envío" value={String(submission.paso_wizard)} />
           <DetailField label="DOI" value={submission.doi} />
         </div>
-        {(submission.pdf_galley_url || submission.html_galley_url) && (
+        {(isPublicGalleyUrl(submission.pdf_galley_url) || isPublicGalleyUrl(submission.html_galley_url)) && (
           <div className="mt-4 flex flex-wrap gap-4 text-sm">
-            {submission.pdf_galley_url && (
-              <a href={submission.pdf_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
+            {isPublicGalleyUrl(submission.pdf_galley_url) && (
+              <a href={resolveApiUrl(submission.pdf_galley_url) || undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
                 <Download className="h-4 w-4" /> PDF
               </a>
             )}
-            {submission.html_galley_url && (
-              <a href={submission.html_galley_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
+            {isPublicGalleyUrl(submission.html_galley_url) && (
+              <a href={resolveApiUrl(submission.html_galley_url) || undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline">
                 <ExternalLink className="h-4 w-4" /> HTML
               </a>
             )}
@@ -1510,8 +1531,8 @@ function getEditorialStageIndex(status: string | null | undefined, pasoEnvio: nu
     en_edicion: 3,
     aceptado_en_edicion: 3,
     en_publicacion: 3,
-    publicado: 4,
-    published: 4,
+    publicado: 3,
+    published: 3,
   };
 
   if (normalizedStatus in statusStages) return statusStages[normalizedStatus];

@@ -7,6 +7,7 @@ import {
   getScieloXmlUrl,
   type PublicSubmissionDetail,
 } from '../../services/publicService';
+import { resolveApiUrl } from '../lib/api';
 
 export function PublicSubmissionDetailPage() {
   const { id } = useParams();
@@ -115,10 +116,15 @@ export function PublicSubmissionDetailPage() {
                 <span className="block text-xs text-gray-500">Revista científica</span>
               </span>
             </Link>
-            <Link to="/login" className="rounded-lg bg-[#e30513] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700">
-              Entrar
-            </Link>
+            <nav className="flex items-center gap-5 text-sm" aria-label="Acceso al sistema">
+              <Link to="/register" className="text-gray-700 transition-colors hover:text-[#e30513]">Registrarse</Link>
+              <Link to="/login" className="rounded-lg bg-[#e30513] px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700">Entrar</Link>
+            </nav>
           </div>
+          <nav className="mt-4 flex flex-wrap items-center gap-x-5 text-sm" aria-label="Navegación principal">
+            <Link to="/" className="font-semibold text-[#e30513]">Inicio</Link>
+            <Link to="/" className="text-gray-700 transition-colors hover:text-[#e30513]">Actual</Link>
+          </nav>
         </div>
       </header>
       <div className="mx-auto max-w-4xl px-4 py-10">
@@ -261,7 +267,7 @@ export function PublicSubmissionDetailPage() {
               <section className="mt-8 flex flex-wrap gap-3" aria-label="Galeras del artículo">
                 {article.pdf_galley_url && (
                   <a
-                    href={article.pdf_galley_url}
+                    href={resolveApiUrl(article.pdf_galley_url) || undefined}
                     target="_blank"
                     rel="noreferrer"
                     className="rounded-lg bg-[#e30513] px-5 py-3 font-semibold text-white transition hover:bg-red-700"
@@ -271,7 +277,7 @@ export function PublicSubmissionDetailPage() {
                 )}
                 {article.html_galley_url && (
                   <a
-                    href={article.html_galley_url}
+                    href={resolveApiUrl(article.html_galley_url) || undefined}
                     target="_blank"
                     rel="noreferrer"
                     className="rounded-lg border border-[#e30513] px-5 py-3 font-semibold text-[#e30513] transition hover:bg-red-50"

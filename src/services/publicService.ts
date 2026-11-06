@@ -43,10 +43,6 @@ export function getScieloXmlUrl(submissionId: string): string {
   return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
 }
 
-export function getOaiListRecordsUrl(): string {
-  return `${API_URL}/oai?verb=ListRecords&metadataPrefix=oai_dc`;
-}
-
 export async function downloadScieloXml(submissionId: string): Promise<void> {
   const response = await fetch(getScieloXmlUrl(submissionId));
   if (!response.ok) throw new Error(`No fue posible descargar el XML: ${response.status}`);
