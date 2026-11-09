@@ -19,6 +19,7 @@ import { ProtectedRoute } from './components/protected-route';
 import { IssuesManagement } from './components/issues-management';
 import { PublicArchive } from './components/public-archive';
 import { PublicSubmissionDetailPage } from './components/public-submission-detail';
+import { EmailTemplatesManagement } from './components/email-templates-management';
 
 // Admin
 function AdminRoot() {
@@ -95,6 +96,14 @@ function AdminIssuesPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout><IssuesManagement /></AdminLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AdminEmailTemplatesPage() {
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminLayout><EmailTemplatesManagement /></AdminLayout>
     </ProtectedRoute>
   );
 }
@@ -229,6 +238,14 @@ function EditorIssuesPage() {
   );
 }
 
+function EditorEmailTemplatesPage() {
+  return (
+    <ProtectedRoute allowedRoles={['editor']}>
+      <EditorLayout><EmailTemplatesManagement /></EditorLayout>
+    </ProtectedRoute>
+  );
+}
+
 // Revisor
 function RevisorRoot() {
   return (
@@ -346,6 +363,10 @@ export const router = createBrowserRouter([
     path: '/admin/numeros',
     element: <AdminIssuesPage />,
   },
+  {
+    path: '/admin/plantillas-correo',
+    element: <AdminEmailTemplatesPage />,
+  },
   // Autor routes
   {
     path: '/autor',
@@ -411,6 +432,10 @@ export const router = createBrowserRouter([
   {
     path: '/editor/numeros',
     element: <EditorIssuesPage />,
+  },
+  {
+    path: '/editor/plantillas-correo',
+    element: <EditorEmailTemplatesPage />,
   },
   // Revisor routes
   {

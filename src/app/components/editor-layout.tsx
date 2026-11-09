@@ -158,6 +158,25 @@ export function EditorLayout({ children }: EditorLayoutProps) {
             </Link>
           </div>
 
+          {/* Sección: Herramientas */}
+          <div>
+            <h3 className="px-3 text-xs font-semibold text-gray-900 uppercase tracking-wider mb-2">
+              Herramientas
+            </h3>
+            <Link
+              to="/editor/plantillas-correo"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/editor/plantillas-correo')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/editor/plantillas-correo') ? FESC_RED : undefined }}
+            >
+              Plantillas de correo
+            </Link>
+          </div>
+
           {/* Sección: Comunicación */}
           <div>
             <h3 className="px-3 text-xs font-semibold text-gray-900 uppercase tracking-wider mb-2">

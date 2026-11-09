@@ -361,6 +361,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               {i18n.t('menu.administration')}
             </Link>
+            <Link
+              to="/admin/plantillas-correo"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/admin/plantillas-correo')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/admin/plantillas-correo') ? FESC_RED : undefined }}
+            >
+              Plantillas de correo
+            </Link>
           </div>
 
           {/* Sección: Comunicación */}
