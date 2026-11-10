@@ -41,6 +41,7 @@ import {
 } from '../../services/submissionService';
 import {
   getSubmissionStatusBadgeClass,
+  getSubmissionStatusEmailDescription,
   getSubmissionStatusLabel,
   normalizeSubmissionStatus,
 } from '../lib/submission-status';
@@ -394,7 +395,9 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       const { submission: updatedSubmission } = await submissionService.getSubmissionById(id);
       setSubmission(updatedSubmission);
       await refreshAuditLogs();
-      toast.success('Revisor asignado y fecha límite registrada.');
+      toast.success('Revisor asignado y fecha límite registrada.', {
+        description: 'Se envió la notificación por correo al evaluador.',
+      });
     } catch (cause) {
       console.error(`Error al asignar un revisor al envío ${id}:`, cause);
       const message = cause instanceof Error ? cause.message : 'No fue posible asignar el revisor.';
@@ -528,7 +531,10 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     try {
       await submissionService.updateSubmissionStatus(id, selectedDecision.status, comment || undefined);
       await refreshAuditLogs();
-      toast.success(`Estado actualizado: ${selectedDecision.label}.`);
+      toast.success(`Estado actualizado: ${selectedDecision.label}.`, {
+        description: getSubmissionStatusEmailDescription(selectedDecision.status)
+          || 'No se requiere una notificación por correo para este estado.',
+      });
       setSelectedDecision(null);
       setEditorialComment('');
     } catch (cause) {

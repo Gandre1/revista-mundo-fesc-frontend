@@ -70,6 +70,19 @@ export function getSubmissionStatusLabel(status: string | null | undefined): str
   return STATUS_LABELS[normalized] || status || 'Sin estado';
 }
 
+export function getSubmissionStatusEmailDescription(status: string | null | undefined): string | null {
+  switch (normalizeSubmissionStatus(status)) {
+    case 'publicado':
+      return 'Se envió la notificación de aceptación por correo al autor.';
+    case 'rechazado':
+      return 'Se envió la notificación de rechazo por correo al autor.';
+    case 'revisiones_requeridas':
+      return 'Se envió la solicitud de cambios por correo al autor.';
+    default:
+      return null;
+  }
+}
+
 export function getSubmissionStatusColor(status: string | null | undefined): string {
   return SUBMISSION_STATUS_COLORS[normalizeSubmissionStatus(status)] || '#6b7280';
 }

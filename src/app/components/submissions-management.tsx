@@ -11,6 +11,7 @@ import {
 } from '../../services/submissionService';
 import {
   getSubmissionStatusBadgeClass,
+  getSubmissionStatusEmailDescription,
   getSubmissionStatusLabel,
   normalizeSubmissionStatus,
   SUBMISSION_STATUSES,
@@ -277,7 +278,10 @@ export function SubmissionsManagement({ onSelectSubmission }: SubmissionsManagem
                             onChange={(event) => void saveSubmissionChange(
                               submission.id,
                               () => submissionService.updateSubmissionStatus(submission.id, event.target.value),
-                              'Estado del envío actualizado.'
+                              [
+                                'Estado del envío actualizado.',
+                                getSubmissionStatusEmailDescription(event.target.value),
+                              ].filter(Boolean).join(' ')
                             )}
                             disabled={savingSubmissionId !== null}
                             title="En revisión: un evaluador está trabajando en el artículo. Ajustes solicitados: el autor debe corregirlo y volver a enviarlo."
