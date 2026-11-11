@@ -20,6 +20,7 @@ import { IssuesManagement } from './components/issues-management';
 import { PublicArchive } from './components/public-archive';
 import { PublicSubmissionDetailPage } from './components/public-submission-detail';
 import { EmailTemplatesManagement } from './components/email-templates-management';
+import { AnalyticsDashboard } from './components/analytics-dashboard';
 
 // Admin
 function AdminRoot() {
@@ -104,6 +105,16 @@ function AdminEmailTemplatesPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout><EmailTemplatesManagement /></AdminLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AdminAnalyticsPage() {
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminLayout>
+        <AnalyticsDashboard />
+      </AdminLayout>
     </ProtectedRoute>
   );
 }
@@ -246,6 +257,16 @@ function EditorEmailTemplatesPage() {
   );
 }
 
+function EditorAnalyticsPage() {
+  return (
+    <ProtectedRoute allowedRoles={['editor']}>
+      <EditorLayout>
+        <AnalyticsDashboard />
+      </EditorLayout>
+    </ProtectedRoute>
+  );
+}
+
 // Revisor
 function RevisorRoot() {
   return (
@@ -367,6 +388,14 @@ export const router = createBrowserRouter([
     path: '/admin/plantillas-correo',
     element: <AdminEmailTemplatesPage />,
   },
+  {
+    path: '/admin/statistics',
+    element: <AdminAnalyticsPage />,
+  },
+  {
+    path: '/admin/statistics/:section',
+    element: <AdminAnalyticsPage />,
+  },
   // Autor routes
   {
     path: '/autor',
@@ -436,6 +465,18 @@ export const router = createBrowserRouter([
   {
     path: '/editor/plantillas-correo',
     element: <EditorEmailTemplatesPage />,
+  },
+  {
+    path: '/editor/statistics',
+    element: <EditorAnalyticsPage />,
+  },
+  {
+    path: '/editor/statistics/articulos',
+    element: <EditorAnalyticsPage />,
+  },
+  {
+    path: '/editor/statistics/revista',
+    element: <EditorAnalyticsPage />,
   },
   // Revisor routes
   {
