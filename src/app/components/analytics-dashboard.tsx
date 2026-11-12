@@ -12,19 +12,32 @@ import {
 } from 'lucide-react';
 import {
   AnalyticsOverview,
+  AnalyticsFilters,
   ArticleStatus,
   EditorialTimes,
   IssuesSummary,
+  ReviewersPerformance,
   getEditorialTimes,
   getIssuesSummary,
   getOverview,
+  getReviewersPerformance,
 } from '../../services/analyticsService';
+import { getIssues, Issue } from '../../services/issueService';
 
 interface DashboardData {
   overview: AnalyticsOverview;
   editorialTimes: EditorialTimes;
   issuesSummary: IssuesSummary;
+  reviewersPerformance: ReviewersPerformance;
 }
+
+const SECTIONS = [
+  'Artículos de Investigación',
+  'Artículos Originales',
+  'Artículos de Revisión',
+  'Reflexión',
+  'Prácticas educativas',
+];
 
 const STATUS_ROWS: { status: ArticleStatus; label: string; color: string }[] = [
   { status: 'submitted', label: 'Enviados', color: 'bg-cyan-500' },
@@ -114,23 +127,28 @@ export function AnalyticsDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<AnalyticsFilters>({});
+  const [issueOptions, setIssueOptions] = useState<Issue[]>([]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [overview, editorialTimes, issuesSummary] = await Promise.all([
-        getOverview(),
-        getEditorialTimes(),
-        getIssuesSummary(),
+      const [overview, editorialTimes, issuesSummary, reviewersPerformance, issues] = await Promise.all([
+        getOverview(filters),
+        getEditorialTimes(filters),
+        getIssuesSummary(filters),
+        getReviewersPerformance(filters),
+        getIssues(),
       ]);
-      setData({ overview, editorialTimes, issuesSummary });
+      setData({ overview, editorialTimes, issuesSummary, reviewersPerformance });
+      setIssueOptions(issues);
     } catch (cause) {
       setError(getErrorMessage(cause));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filters]);
 
   useEffect(() => {
     void loadDashboard();
@@ -158,7 +176,7 @@ export function AnalyticsDashboard() {
     );
   }
 
-  const { overview, editorialTimes, issuesSummary } = data;
+  const { overview, editorialTimes, issuesSummary, reviewersPerformance } = data;
   const publishedCount = overview.articlesByStatus.published;
   const maxStatusCount = Math.max(1, ...STATUS_ROWS.map(({ status }) => overview.articlesByStatus[status]));
   const maxIssueCount = Math.max(1, ...issuesSummary.issues.map((issue) => issue.articles_count));
@@ -184,6 +202,75 @@ export function AnalyticsDashboard() {
           Actualizar
         </button>
       </header>
+
+      <section aria-label="Filtros de analíticas" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-end">
+          <label className="block text-sm font-medium text-gray-700">
+            Fecha de inicio
+            <input
+              type="date"
+              value={filters.startDate || ''}
+              onChange={(event) => setFilters((current) => ({
+                ...current,
+                startDate: event.target.value || undefined,
+              }))}
+              className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Fecha final
+            <input
+              type="date"
+              value={filters.endDate || ''}
+              onChange={(event) => setFilters((current) => ({
+                ...current,
+                endDate: event.target.value || undefined,
+              }))}
+              className="mt-1.5 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Volumen / número
+            <select
+              value={filters.issueId || ''}
+              onChange={(event) => setFilters((current) => ({
+                ...current,
+                issueId: event.target.value ? Number(event.target.value) : undefined,
+              }))}
+              className="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+            >
+              <option value="">Todos los volúmenes</option>
+              {issueOptions.map((issue) => (
+                <option key={issue.id} value={issue.id}>
+                  Vol. {issue.volume} · N.º {issue.number} · {issue.year}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Sección
+            <select
+              value={filters.section || ''}
+              onChange={(event) => setFilters((current) => ({
+                ...current,
+                section: event.target.value || undefined,
+              }))}
+              className="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100"
+            >
+              <option value="">Todas las secciones</option>
+              {SECTIONS.map((section) => <option key={section} value={section}>{section}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setFilters({})}
+            disabled={!filters.startDate && !filters.endDate && !filters.issueId && !filters.section}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+      </section>
 
       <section aria-label="Indicadores principales" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
@@ -331,6 +418,52 @@ export function AnalyticsDashboard() {
             />
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-gray-900">Rendimiento de evaluadores</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Asignaciones, cumplimiento y tiempo promedio de respuesta en el periodo filtrado.
+          </p>
+        </div>
+        {reviewersPerformance.reviewers.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500">No hay evaluadores para los filtros seleccionados.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
+                  <th scope="col" className="px-3 py-3 font-medium">Evaluador</th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">Asignadas</th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">Completadas</th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">Pendientes</th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">Cumplimiento</th>
+                  <th scope="col" className="px-3 py-3 text-right font-medium">Días promedio de respuesta</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {reviewersPerformance.reviewers.map((reviewer) => (
+                  <tr key={reviewer.correo} className="text-gray-700">
+                    <th scope="row" className="px-3 py-3 font-medium text-gray-900">
+                      <span className="block">{reviewer.nombre}</span>
+                      <span className="mt-0.5 block text-xs font-normal text-gray-500">{reviewer.correo}</span>
+                    </th>
+                    <td className="px-3 py-3 text-right tabular-nums">{reviewer.assignedReviews.toLocaleString('es-CO')}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">{reviewer.completedReviews.toLocaleString('es-CO')}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">{reviewer.pendingReviews.toLocaleString('es-CO')}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">{reviewer.completionRate.toLocaleString('es-CO')}%</td>
+                    <td className="px-3 py-3 text-right tabular-nums">
+                      {reviewer.averageResponseDays === null
+                        ? '—'
+                        : reviewer.averageResponseDays.toLocaleString('es-CO', { maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );
