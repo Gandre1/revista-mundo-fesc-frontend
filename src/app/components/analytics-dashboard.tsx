@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
+  Download,
   RefreshCw,
   Send,
   Users,
@@ -17,6 +18,7 @@ import {
   EditorialTimes,
   IssuesSummary,
   ReviewersPerformance,
+  exportAnalyticsReport,
   getEditorialTimes,
   getIssuesSummary,
   getOverview,
@@ -127,6 +129,8 @@ export function AnalyticsDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [filters, setFilters] = useState<AnalyticsFilters>({});
   const [issueOptions, setIssueOptions] = useState<Issue[]>([]);
 
@@ -153,6 +157,26 @@ export function AnalyticsDashboard() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await exportAnalyticsReport(filters);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'analytics-report.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (cause) {
+      setExportError(getErrorMessage(cause));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) return <DashboardSkeleton />;
 
@@ -193,15 +217,32 @@ export function AnalyticsDashboard() {
             Indicadores generales del flujo de artículos y las publicaciones de la revista.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadDashboard()}
-          className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:self-auto"
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          Actualizar
-        </button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={exporting}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-wait disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            {exporting ? 'Exportando…' : 'Exportar CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadDashboard()}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Actualizar
+          </button>
+        </div>
       </header>
+
+      {exportError && (
+        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          No fue posible exportar el informe: {exportError}
+        </p>
+      )}
 
       <section aria-label="Filtros de analíticas" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] xl:items-end">

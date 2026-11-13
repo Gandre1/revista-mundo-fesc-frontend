@@ -73,6 +73,21 @@ function getAnalytics<T>(path: string, filters: AnalyticsFilters = {}): Promise<
     .then(({ data }) => data);
 }
 
+export function exportAnalyticsReport(filters: AnalyticsFilters = {}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') searchParams.set(key, String(value));
+  });
+  const queryString = searchParams.toString();
+  const query = queryString ? `?${queryString}` : '';
+  return axios
+    .get<Blob>(`${API_URL}/analytics/export/csv${query}`, {
+      headers: getApiAuthHeaders(),
+      responseType: 'blob',
+    })
+    .then(({ data }) => data);
+}
+
 export function getOverview(filters?: AnalyticsFilters): Promise<AnalyticsOverview> {
   return getAnalytics<AnalyticsOverview>('overview', filters);
 }
