@@ -21,6 +21,7 @@ import { PublicArchive } from './components/public-archive';
 import { PublicSubmissionDetailPage } from './components/public-submission-detail';
 import { EmailTemplatesManagement } from './components/email-templates-management';
 import { AnalyticsDashboard } from './components/analytics-dashboard';
+import { AuditLogsPage } from './components/audit-logs-page';
 
 // Admin
 function AdminRoot() {
@@ -114,6 +115,16 @@ function AdminAnalyticsPage() {
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout>
         <AnalyticsDashboard />
+      </AdminLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AdminAuditLogsPage() {
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminLayout>
+        <AuditLogsPage />
       </AdminLayout>
     </ProtectedRoute>
   );
@@ -395,6 +406,10 @@ export const router = createBrowserRouter([
   {
     path: '/admin/statistics/:section',
     element: <AdminAnalyticsPage />,
+  },
+  {
+    path: '/admin/audit-logs',
+    element: <AdminAuditLogsPage />,
   },
   // Autor routes
   {

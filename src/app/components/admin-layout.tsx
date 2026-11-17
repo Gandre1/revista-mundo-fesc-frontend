@@ -373,6 +373,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               Plantillas de correo
             </Link>
+            <Link
+              to="/admin/audit-logs"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/admin/audit-logs')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/admin/audit-logs') ? FESC_RED : undefined }}
+            >
+              Logs de auditoría
+            </Link>
           </div>
 
           {/* Sección: Comunicación */}
