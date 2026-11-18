@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { BookOpen, Download, ExternalLink } from 'lucide-react';
+import { getDashboardPath, useAuth } from './auth-context';
 import {
   downloadScieloXml,
   getPublicSubmissionDetail,
@@ -11,6 +12,8 @@ import { resolveApiUrl } from '../lib/api';
 
 export function PublicSubmissionDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [detail, setDetail] = useState<PublicSubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +120,32 @@ export function PublicSubmissionDetailPage() {
               </span>
             </Link>
             <nav className="flex items-center gap-5 text-sm" aria-label="Acceso al sistema">
-              <Link to="/register" className="text-gray-700 transition-colors hover:text-[#e30513]">Registrarse</Link>
-              <Link to="/login" className="rounded-lg bg-[#e30513] px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700">Entrar</Link>
+              {user ? (
+                <>
+                  <span className="hidden text-gray-600 sm:inline">Hola, {user.nombre}</span>
+                  <Link
+                    to={getDashboardPath(user.role)}
+                    className="rounded-lg bg-[#e30513] px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700"
+                  >
+                    Panel de gestión
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      navigate('/', { replace: true });
+                    }}
+                    className="text-gray-700 transition-colors hover:text-[#e30513]"
+                  >
+                    Cerrar sesión
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/register" className="text-gray-700 transition-colors hover:text-[#e30513]">Registrarse</Link>
+                  <Link to="/login" className="rounded-lg bg-[#e30513] px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700">Entrar</Link>
+                </>
+              )}
             </nav>
           </div>
           <nav className="mt-4 flex flex-wrap items-center gap-x-5 text-sm" aria-label="Navegación principal">

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { useAuth } from './auth-context';
+import axios from 'axios';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -12,13 +13,13 @@ export function Register() {
   const [privacyDialogOpen, setPrivacyDialogOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     apellidos: '',
     afiliacion: '',
     pais: '',
     email: '',
-    nombreUsuario: '',
     password: '',
     confirmPassword: '',
     consentimiento: false,
@@ -28,47 +29,55 @@ export function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
-    
-    // Validar contraseñas
+
+    if (!/^[^\s@]+@fesc\.edu\.co$/i.test(formData.email.trim())) {
+      setErrorMessage('Ingrese un correo institucional válido con dominio @fesc.edu.co.');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setErrorMessage('Las contraseñas no coinciden.');
       return;
     }
-    
-    if (formData.password.length < 6) {
-      setErrorMessage('La contraseña debe tener al menos 6 caracteres.');
+
+    if (
+      formData.password.length < 8 ||
+      !/[a-z]/.test(formData.password) ||
+      !/[A-Z]/.test(formData.password) ||
+      !/\d/.test(formData.password) ||
+      !/[^A-Za-z0-9]/.test(formData.password)
+    ) {
+      setErrorMessage('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial.');
       return;
     }
-    
-    // Registrar usuario usando el contexto de autenticación
-    const success = register({
-      email: formData.email,
-      password: formData.password,
-      nombre: formData.nombre,
-      apellidos: formData.apellidos,
-      nombreUsuario: formData.nombreUsuario,
-      afiliacion: formData.afiliacion,
-      pais: formData.pais,
-      notificaciones: formData.notificaciones,
-      revisor: formData.revisor,
-      role: 'author'
-    });
-    
-    if (!success) {
-      setErrorMessage('Este correo electrónico ya está registrado.');
-      return;
+
+    setIsSubmitting(true);
+    try {
+      await register({
+        nombre: formData.nombre.trim(),
+        apellidos: formData.apellidos.trim(),
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        afiliacion: formData.afiliacion.trim(),
+        pais: formData.pais,
+      });
+
+      setSuccessMessage('¡Registro exitoso! Redirigiendo al inicio de sesión...');
+      window.setTimeout(() => navigate('/login'), 2000);
+    } catch (requestError) {
+      const message = axios.isAxiosError<{ message?: string }>(requestError)
+        ? requestError.response?.data?.message || 'No fue posible completar el registro. Inténtelo de nuevo.'
+        : requestError instanceof Error
+          ? requestError.message
+          : 'No fue posible completar el registro. Inténtelo de nuevo.';
+      setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    // Registro exitoso
-    setSuccessMessage('¡Registro exitoso! Redirigiendo al inicio de sesión...');
-    
-    setTimeout(() => {
-      navigate('/login');
-    }, 2000);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -317,32 +326,9 @@ export function Register() {
                       id="email"
                       name="email"
                       type="email"
+                      autoComplete="email"
+                      title="Use su correo institucional @fesc.edu.co"
                       value={formData.email}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 transition-all"
-                      style={{ fontFamily: "'Roboto', Calibri, sans-serif" }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = FESC_RED;
-                        e.currentTarget.style.boxShadow = `0 0 0 1px ${FESC_RED}`;
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = '#d1d5db';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    />
-                  </div>
-
-                  {/* Nombre usuario */}
-                  <div>
-                    <label htmlFor="nombreUsuario" className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                      Nombre usuario <span style={{ color: FESC_RED }}>*</span>
-                    </label>
-                    <input
-                      id="nombreUsuario"
-                      name="nombreUsuario"
-                      type="text"
-                      value={formData.nombreUsuario}
                       onChange={handleChange}
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 transition-all"
@@ -367,6 +353,7 @@ export function Register() {
                       id="password"
                       name="password"
                       type="password"
+                      autoComplete="new-password"
                       value={formData.password}
                       onChange={handleChange}
                       required
@@ -392,6 +379,7 @@ export function Register() {
                       id="confirmPassword"
                       name="confirmPassword"
                       type="password"
+                      autoComplete="new-password"
                       value={formData.confirmPassword}
                       onChange={handleChange}
                       required
@@ -471,13 +459,14 @@ export function Register() {
               <div className="flex items-center gap-3 pt-4">
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="px-6 py-2 text-white rounded hover:opacity-90 transition-opacity"
                   style={{ 
                     backgroundColor: FESC_RED,
                     fontFamily: "'Roboto', Calibri, sans-serif"
                   }}
                 >
-                  Registrarse
+                  {isSubmitting ? 'Registrando...' : 'Registrarse'}
                 </button>
                 <Link
                   to="/login"

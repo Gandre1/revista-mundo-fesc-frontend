@@ -163,7 +163,7 @@ export function RevisorLayout({ children }: RevisorLayoutProps) {
           <button
             onClick={() => {
               logout();
-              navigate('/login');
+              navigate('/login', { replace: true });
             }}
             className="flex items-center gap-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded transition-colors text-sm w-full"
           >

@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Inbox, LogOut, BookOpen, Menu, X, ChevronRight, BarChart3, User, PlusCircle, Mail, HelpCircle, ListTodo, Settings, FileText, Users, TrendingUp } from 'lucide-react';
+import { LogOut, BookOpen, Menu, X } from 'lucide-react';
 import { NotificationBell } from './notification-bell';
 import { LanguageSelector } from './language-selector';
 import { useAuth } from './auth-context';
@@ -28,19 +28,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       window.removeEventListener('languageChange', handleLanguageChange);
     };
   }, []);
-
-  const navigation = [
-    { name: 'Dashboard', href: '/admin/dashboard', icon: BarChart3 },
-    { name: 'Envíos', href: '/admin/submissions', icon: Inbox },
-    { name: 'Revisiones', href: '/admin/reviews', icon: FileText },
-    { name: 'Tareas', href: '/admin/tasks', icon: ListTodo },
-    { name: 'Mensajería', href: '/admin/mensajeria', icon: Mail },
-    { name: 'Estadísticas', href: '/admin/statistics', icon: TrendingUp },
-    { name: 'Usuarios', href: '/admin/users', icon: Users },
-    { name: 'Ayuda', href: '/admin/help', icon: HelpCircle },
-    { name: 'Configuración', href: '/admin/settings', icon: Settings },
-    { name: 'Mi Perfil', href: '/admin/profile', icon: User },
-  ];
 
   const isActive = (href: string) => {
     return location.pathname.startsWith(href);
@@ -143,97 +130,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               }}
             >
               {i18n.t('menu.issues')}
-            </Link>
-            <Link
-              to="/admin/doi"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/doi')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/doi') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.doi')}
-            </Link>
-          </div>
-
-          {/* Sección: Ajustes */}
-          <div>
-            <h3 className="px-3 text-xs font-semibold text-gray-900 uppercase tracking-wider mb-2">
-              {i18n.t('menu.settings')}
-            </h3>
-            <Link
-              to="/admin/settings/revista"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/settings/revista')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/settings/revista') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.journal')}
-            </Link>
-            <Link
-              to="/admin/settings/sitio-web"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/settings/sitio-web')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/settings/sitio-web') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.website')}
-            </Link>
-            <Link
-              to="/admin/settings/flujo-trabajo"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/settings/flujo-trabajo')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/settings/flujo-trabajo') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.workflow')}
-            </Link>
-            <Link
-              to="/admin/settings/distribucion"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/settings/distribucion')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/settings/distribucion') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.distribution')}
-            </Link>
-            <Link
-              to="/admin/users"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/users')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/users') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.usersRoles')}
             </Link>
           </div>
 
@@ -348,20 +244,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {i18n.t('menu.tools')}
             </h3>
             <Link
-              to="/admin/tools/administracion"
-              onClick={() => setSidebarOpen(false)}
-              className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/tools/administracion')
-                  ? 'font-semibold'
-                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-              style={{
-                color: isActive('/admin/tools/administracion') ? FESC_RED : undefined,
-              }}
-            >
-              {i18n.t('menu.administration')}
-            </Link>
-            <Link
               to="/admin/plantillas-correo"
               onClick={() => setSidebarOpen(false)}
               className={`block px-3 py-2 text-sm transition-colors ${
@@ -439,7 +321,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <button
             onClick={() => {
               logout();
-              navigate('/login');
+              navigate('/login', { replace: true });
             }}
             className="flex items-center gap-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded transition-colors text-sm w-full"
           >

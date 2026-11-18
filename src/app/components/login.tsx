@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { useAuth } from './auth-context';
+import { getDashboardPath, useAuth } from './auth-context';
 import { LanguageSelector } from './language-selector';
 import { i18n } from '../lib/i18n';
+import axios from 'axios';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
 
 export function Login() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [, forceUpdate] = useState({});
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -28,25 +30,23 @@ export function Login() {
     };
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    const success = login(username, password);
-    if (success) {
-      // Redirigir según el rol del usuario
-      const loggedUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-      if (loggedUser.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else if (loggedUser.role === 'editor') {
-        navigate('/editor/dashboard');
-      } else if (loggedUser.role === 'reviewer') {
-        navigate('/revisor/dashboard');
-      } else {
-        navigate('/autor/dashboard');
-      }
-    } else {
-      setError(i18n.t('login.incorrectCredentials'));
+
+    setIsSubmitting(true);
+    try {
+      const loggedUser = await login(email.trim(), password);
+      navigate(getDashboardPath(loggedUser.role), { replace: true });
+    } catch (requestError) {
+      const message = axios.isAxiosError<{ message?: string }>(requestError)
+        ? requestError.response?.data?.message || i18n.t('login.incorrectCredentials')
+        : requestError instanceof Error
+          ? requestError.message
+          : i18n.t('login.incorrectCredentials');
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -112,29 +112,16 @@ export function Login() {
                 </div>
               )}
               
-              {/* Credenciales de prueba */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                <p className="text-sm font-semibold mb-2" style={{ color: FESC_GRAY }}>
-                  {i18n.t('login.testCredentials')}
-                </p>
-                <div className="text-xs space-y-1" style={{ color: FESC_GRAY }}>
-                  <p><strong>{i18n.t('login.admin')}:</strong> admin@fesc.edu.co / admin123</p>
-                  <p><strong>Editor:</strong> editor@fesc.edu.co / editor123</p>
-                  <p><strong>{i18n.t('login.reviewer')}:</strong> revisor@fesc.edu.co / revisor123</p>
-                  <p><strong>{i18n.t('login.author')}:</strong> usuario@fesc.edu.co / usuario123</p>
-                </div>
-              </div>
-
-              {/* Nombre de usuario o correo */}
+              {/* Correo electrónico */}
               <div>
-                <label htmlFor="username" className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
-                  {i18n.t('login.usernameOrEmail')} <span style={{ color: FESC_RED }}>*</span>
+                <label htmlFor="email" className="block text-sm mb-2" style={{ color: FESC_GRAY }}>
+                  {i18n.t('login.email')} <span style={{ color: FESC_RED }}>*</span>
                 </label>
                 <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 transition-all"
                   style={{ 
@@ -202,13 +189,14 @@ export function Login() {
               <div className="flex items-center gap-3 pt-4">
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="px-6 py-2 text-white rounded hover:opacity-90 transition-opacity"
                   style={{ 
                     backgroundColor: FESC_RED,
                     fontFamily: "'Roboto', Calibri, sans-serif"
                   }}
                 >
-                  {i18n.t('login.enterButton')}
+                  {isSubmitting ? 'Ingresando...' : i18n.t('login.enterButton')}
                 </button>
                 <Link
                   to="/register"

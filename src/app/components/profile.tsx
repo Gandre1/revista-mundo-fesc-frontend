@@ -1,37 +1,104 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Shield, Calendar, Save } from 'lucide-react';
+import axios from 'axios';
+import { User as UserIcon, Mail, Shield, Calendar, Save, Bell } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from './auth-context';
-import { storage } from '../lib/storage';
+import { User } from '../lib/storage';
+import {
+  getProfile,
+  updateProfile as saveProfile,
+  UpdateProfilePayload,
+} from '../../services/authService';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
 const FESC_GRAY = '#3c3c3b';
 
-export function Profile() {
-  const { user } = useAuth();
-  const [editing, setEditing] = useState(false);
-  const [currentUser, setCurrentUser] = useState(user);
-  const [formData, setFormData] = useState({
-    nombre: user?.nombre || '',
-    apellidos: user?.apellidos || '',
-    email: user?.email || '',
-    afiliacion: user?.afiliacion || '',
-    pais: user?.pais || '',
-    orcid: user?.orcid || '',
-  });
+type ProfileFormData = UpdateProfilePayload & { email: string };
 
-  // Actualizar cuando cambie el usuario
+function getProfileFormData(user: User): ProfileFormData {
+  return {
+    nombre: user.nombre || '',
+    apellidos: user.apellidos || '',
+    email: user.email || '',
+    afiliacion: user.afiliacion || '',
+    pais: user.pais || '',
+    orcid: user.orcid || '',
+    notificaciones: user.notificaciones ?? true,
+  };
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+export function Profile() {
+  const { user, updateUser } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState<ProfileFormData>(() => (
+    user ? getProfileFormData(user) : {
+      nombre: '',
+      apellidos: '',
+      email: '',
+      afiliacion: '',
+      pais: '',
+      orcid: '',
+      notificaciones: true,
+    }
+  ));
+
   useEffect(() => {
-    setCurrentUser(user);
-    setFormData({
-      nombre: user?.nombre || '',
-      apellidos: user?.apellidos || '',
-      email: user?.email || '',
-      afiliacion: user?.afiliacion || '',
-      pais: user?.pais || '',
-      orcid: user?.orcid || '',
-    });
-  }, [user]);
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoading(true);
+    getProfile()
+      .then(({ user: profile }) => {
+        if (!active) return;
+
+        const updates: Partial<User> = {
+          nombre: profile.nombre,
+          apellidos: profile.apellidos || '',
+          email: profile.email,
+          afiliacion: profile.afiliacion || '',
+          pais: profile.pais || '',
+          orcid: profile.orcid || '',
+          notificaciones: profile.notificaciones == null
+            ? user.notificaciones ?? true
+            : Boolean(profile.notificaciones),
+        };
+        updateUser(updates);
+        setFormData({
+          nombre: updates.nombre || '',
+          apellidos: updates.apellidos || '',
+          email: updates.email || '',
+          afiliacion: updates.afiliacion || '',
+          pais: updates.pais || '',
+          orcid: updates.orcid || '',
+          notificaciones: updates.notificaciones ?? true,
+        });
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          toast.error(getErrorMessage(error, 'No fue posible cargar el perfil.'));
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   if (!user) {
     return (
@@ -41,37 +108,68 @@ export function Profile() {
     );
   }
 
-  const handleSave = () => {
-    // Actualizar usuario en storage
-    const users = storage.getUsers();
-    const updatedUsers = users.map(u => 
-      u.id === user.id 
-        ? { ...u, ...formData }
-        : u
-    );
-    storage.saveUsers(updatedUsers);
-    
-    // Actualizar usuario actual
-    const updatedUser = { ...user, ...formData };
-    storage.setCurrentUser(updatedUser);
-    setCurrentUser(updatedUser);
-    
-    setEditing(false);
-    alert('Perfil actualizado exitosamente');
-    
-    // Recargar página para refrescar el usuario en todos los componentes
-    window.location.reload();
+  const handleSave = async () => {
+    const payload: UpdateProfilePayload = {
+      nombre: formData.nombre.trim(),
+      apellidos: formData.apellidos.trim(),
+      afiliacion: formData.afiliacion.trim(),
+      pais: formData.pais.trim(),
+      orcid: formData.orcid.trim(),
+      notificaciones: formData.notificaciones,
+    };
+
+    if (!payload.nombre || !payload.apellidos) {
+      toast.error('El nombre y los apellidos son obligatorios.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await saveProfile(payload);
+      const updatedProfile: Partial<User> = {
+        nombre: response.user.nombre || payload.nombre,
+        apellidos: response.user.apellidos || payload.apellidos,
+        afiliacion: response.user.afiliacion || '',
+        pais: response.user.pais || '',
+        orcid: response.user.orcid || '',
+        notificaciones: response.user.notificaciones == null
+          ? payload.notificaciones
+          : Boolean(response.user.notificaciones),
+      };
+
+      updateUser(updatedProfile);
+      setFormData({
+        nombre: updatedProfile.nombre || payload.nombre,
+        apellidos: updatedProfile.apellidos || payload.apellidos,
+        email: user.email,
+        afiliacion: updatedProfile.afiliacion || '',
+        pais: updatedProfile.pais || '',
+        orcid: updatedProfile.orcid || '',
+        notificaciones: updatedProfile.notificaciones ?? payload.notificaciones,
+      });
+      setEditing(false);
+      toast.success(response.message || 'Perfil actualizado correctamente.');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'No fue posible actualizar el perfil.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const roleLabels = {
+  const roleLabels: Record<User['role'], string> = {
     admin: 'Administrador',
     editor: 'Editor',
-    revisor: 'Revisor',
-    autor: 'Autor'
+    reviewer: 'Revisor',
+    author: 'Autor',
   };
 
   return (
     <div className="space-y-6">
+      {isLoading && (
+        <p className="text-sm text-gray-500" role="status">
+          Cargando perfil...
+        </p>
+      )}
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center gap-4">
@@ -85,13 +183,14 @@ export function Profile() {
             <div className="flex items-center gap-2 mt-1">
               <Shield className="w-4 h-4" style={{ color: FESC_RED }} />
               <span className="text-sm font-medium" style={{ color: FESC_GRAY }}>
-                {roleLabels[user.role as keyof typeof roleLabels] || user.role}
+                {roleLabels[user.role]}
               </span>
             </div>
           </div>
           {!editing && (
             <button
               onClick={() => setEditing(true)}
+              disabled={isLoading}
               className="px-4 py-2 text-white rounded hover:opacity-90"
               style={{ backgroundColor: FESC_RED }}
             >
@@ -111,7 +210,7 @@ export function Profile() {
           {/* Nombre */}
           <div>
             <label className="block text-sm font-semibold mb-2" style={{ color: FESC_GRAY }}>
-              <User className="w-4 h-4 inline mr-2" />
+              <UserIcon className="w-4 h-4 inline mr-2" />
               Nombre
             </label>
             {editing ? (
@@ -251,30 +350,48 @@ export function Profile() {
               <p className="text-gray-700 py-2">{user.orcid || 'No especificado'}</p>
             )}
           </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2" style={{ color: FESC_GRAY }}>
+              <Bell className="w-4 h-4 inline mr-2" />
+              Notificaciones por correo
+            </label>
+            {editing ? (
+              <label className="flex items-center gap-2 py-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={formData.notificaciones}
+                  onChange={(e) => setFormData({ ...formData, notificaciones: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300"
+                  style={{ accentColor: FESC_RED }}
+                />
+                Recibir notificaciones de la revista
+              </label>
+            ) : (
+              <p className="text-gray-700 py-2">
+                {formData.notificaciones ? 'Activadas' : 'Desactivadas'}
+              </p>
+            )}
+          </div>
         </div>
 
         {editing && (
           <div className="mt-6 flex gap-3">
             <button
               onClick={handleSave}
+              disabled={isSaving}
               className="px-6 py-2 text-white rounded hover:opacity-90 flex items-center gap-2"
               style={{ backgroundColor: FESC_RED }}
             >
               <Save className="w-4 h-4" />
-              Guardar cambios
+              {isSaving ? 'Guardando...' : 'Guardar cambios'}
             </button>
             <button
               onClick={() => {
                 setEditing(false);
-                setFormData({
-                  nombre: user.nombre || '',
-                  apellidos: user.apellidos || '',
-                  email: user.email || '',
-                  afiliacion: user.afiliacion || '',
-                  pais: user.pais || '',
-                  orcid: user.orcid || '',
-                });
+                setFormData(getProfileFormData(user));
               }}
+              disabled={isSaving}
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
             >
               Cancelar
@@ -305,7 +422,7 @@ export function Profile() {
               <Shield className="w-5 h-5 text-gray-400" />
               <div>
                 <p className="text-sm font-medium" style={{ color: FESC_GRAY }}>Rol</p>
-                <p className="text-xs text-gray-500">{roleLabels[user.role as keyof typeof roleLabels] || user.role}</p>
+                <p className="text-xs text-gray-500">{roleLabels[user.role]}</p>
               </div>
             </div>
           </div>

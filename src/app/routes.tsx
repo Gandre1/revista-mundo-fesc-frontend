@@ -22,6 +22,12 @@ import { PublicSubmissionDetailPage } from './components/public-submission-detai
 import { EmailTemplatesManagement } from './components/email-templates-management';
 import { AnalyticsDashboard } from './components/analytics-dashboard';
 import { AuditLogsPage } from './components/audit-logs-page';
+import { getDashboardPath, useAuth } from './components/auth-context';
+
+function UnknownRouteRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={user ? getDashboardPath(user.role) : '/login'} replace />;
+}
 
 // Admin
 function AdminRoot() {
@@ -521,6 +527,6 @@ export const router = createBrowserRouter([
   // Fallback
   {
     path: '*',
-    element: <Navigate to="/login" replace />,
+    element: <UnknownRouteRedirect />,
   },
 ]);
