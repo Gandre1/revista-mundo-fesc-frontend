@@ -164,9 +164,9 @@ export function Login() {
                   }}
                 />
                 <div className="mt-2">
-                  <a href="#" className="text-sm hover:underline" style={{ color: FESC_RED }}>
+                  <Link to="/forgot-password" className="text-sm hover:underline" style={{ color: FESC_RED }}>
                     {i18n.t('login.forgotPassword')}
-                  </a>
+                  </Link>
                 </div>
               </div>
 

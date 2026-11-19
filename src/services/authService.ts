@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { API_URL } from '../app/lib/api';
+import { API_URL, notifySessionExpired } from '../app/lib/api';
 
 export type UserRole = 'admin' | 'editor' | 'reviewer' | 'author';
 
@@ -59,6 +59,24 @@ export interface UpdateProfileResponse {
   user: Partial<UserProfile>;
 }
 
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ResetPasswordPayload {
+  token: string;
+  password: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface PasswordActionResponse {
+  message: string;
+}
+
 const apiBaseUrl = typeof API_URL === 'string' ? API_URL.trim().replace(/\/+$/, '') : '';
 const apiRoot = /\/api$/i.test(apiBaseUrl) ? apiBaseUrl : `${apiBaseUrl}/api`;
 
@@ -68,6 +86,23 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+const handleUnauthorizedResponse = (error: unknown) => {
+  if (axios.isAxiosError(error) && error.response?.status === 401) {
+    notifySessionExpired();
+  }
+  return Promise.reject(error);
+};
+
+axios.interceptors.response.use(
+  (response) => response,
+  handleUnauthorizedResponse
+);
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  handleUnauthorizedResponse
+);
 
 export function setAuthToken(token: string | null) {
   if (token) {
@@ -98,5 +133,20 @@ export async function getProfile(): Promise<ProfileResponse> {
 
 export async function updateProfile(payload: UpdateProfilePayload): Promise<UpdateProfileResponse> {
   const { data } = await apiClient.put<UpdateProfileResponse>('/users/profile', payload);
+  return data;
+}
+
+export async function forgotPassword(payload: ForgotPasswordPayload): Promise<PasswordActionResponse> {
+  const { data } = await apiClient.post<PasswordActionResponse>('/auth/forgot-password', payload);
+  return data;
+}
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<PasswordActionResponse> {
+  const { data } = await apiClient.post<PasswordActionResponse>('/auth/reset-password', payload);
+  return data;
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<PasswordActionResponse> {
+  const { data } = await apiClient.put<PasswordActionResponse>('/users/change-password', payload);
   return data;
 }

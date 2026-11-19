@@ -1,4 +1,4 @@
-import { apiFetch, API_URL, getApiAuthHeaders } from '../app/lib/api';
+import { apiFetch, API_URL, getApiAuthHeaders, notifySessionExpired } from '../app/lib/api';
 
 export function getSubmissionScieloXmlUrl(submissionId: string): string {
   return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
@@ -386,6 +386,9 @@ export const submissionService = {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        notifySessionExpired();
+      }
       const errorData = await response.json();
       throw new Error(errorData.message || 'Error al subir el archivo');
     }
@@ -424,6 +427,9 @@ export const submissionService = {
     );
 
     if (!response.ok) {
+      if (response.status === 401) {
+        notifySessionExpired();
+      }
       const responseText = await response.text();
       let message = responseText || 'No fue posible obtener el archivo.';
       try {

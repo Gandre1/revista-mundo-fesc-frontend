@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { User as UserIcon, Mail, Shield, Calendar, Save, Bell } from 'lucide-react';
+import { User as UserIcon, Mail, Shield, Calendar, Save, Bell, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from './auth-context';
 import { User } from '../lib/storage';
 import {
   getProfile,
   updateProfile as saveProfile,
+  changePassword,
   UpdateProfilePayload,
 } from '../../services/authService';
+import { getPasswordValidationError } from '../lib/password-validation';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -40,6 +42,12 @@ export function Profile() {
   const [editing, setEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
   const [formData, setFormData] = useState<ProfileFormData>(() => (
     user ? getProfileFormData(user) : {
       nombre: '',
@@ -153,6 +161,34 @@ export function Profile() {
       toast.error(getErrorMessage(error, 'No fue posible actualizar el perfil.'));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error('Las contraseñas no coinciden.');
+      return;
+    }
+    const passwordError = getPasswordValidationError(passwordForm.newPassword);
+    if (passwordError) {
+      toast.error(passwordError);
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const response = await changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      toast.success(response.message || 'Contraseña cambiada correctamente.');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'No fue posible cambiar la contraseña.'));
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -427,6 +463,70 @@ export function Profile() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h2 className="text-xl font-semibold mb-2" style={{ color: FESC_GRAY }}>
+          Cambiar contraseña
+        </h2>
+        <p className="mb-6 text-sm text-gray-500">
+          La nueva contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial.
+        </p>
+        <form onSubmit={handleChangePassword} className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label htmlFor="current-password" className="mb-2 block text-sm font-semibold" style={{ color: FESC_GRAY }}>
+              <KeyRound className="mr-2 inline h-4 w-4" />
+              Contraseña actual
+            </label>
+            <input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={passwordForm.currentPassword}
+              onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })}
+              required
+              className="w-full rounded border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2"
+            />
+          </div>
+          <div>
+            <label htmlFor="profile-new-password" className="mb-2 block text-sm font-semibold" style={{ color: FESC_GRAY }}>
+              Nueva contraseña
+            </label>
+            <input
+              id="profile-new-password"
+              type="password"
+              autoComplete="new-password"
+              value={passwordForm.newPassword}
+              onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })}
+              required
+              className="w-full rounded border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2"
+            />
+          </div>
+          <div>
+            <label htmlFor="profile-confirm-password" className="mb-2 block text-sm font-semibold" style={{ color: FESC_GRAY }}>
+              Confirmar nueva contraseña
+            </label>
+            <input
+              id="profile-confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={passwordForm.confirmPassword}
+              onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })}
+              required
+              className="w-full rounded border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <button
+              type="submit"
+              disabled={isChangingPassword}
+              className="rounded px-6 py-2 text-white hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: FESC_RED }}
+            >
+              {isChangingPassword ? 'Cambiando...' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

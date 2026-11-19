@@ -1,5 +1,13 @@
 export const API_URL = (import.meta as any).env?.VITE_API_URL;
 
+export const SESSION_EXPIRED_EVENT = 'fesc:session-expired';
+
+export function notifySessionExpired(): void {
+  if (typeof window !== 'undefined' && localStorage.getItem('token')) {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
 export function getApiOrigin(): string {
   if (typeof API_URL === 'string' && API_URL.trim()) {
     try {
@@ -81,6 +89,9 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      notifySessionExpired();
+    }
     const message = data && typeof data === 'object' && 'message' in data
       ? String(data.message)
       : `Error HTTP ${response.status}: ${response.statusText || 'Error en la petición al servidor'}`;

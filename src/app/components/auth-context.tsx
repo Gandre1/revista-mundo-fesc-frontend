@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { toast } from 'sonner';
 import { storage, User } from '../lib/storage';
+import { SESSION_EXPIRED_EVENT } from '../lib/api';
 import {
   login as requestLogin,
   register as requestRegister,
@@ -54,6 +56,24 @@ function getStoredUser(): User | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getStoredUser);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      if (!localStorage.getItem('token')) return;
+
+      setUser(null);
+      localStorage.removeItem('token');
+      setAuthToken(null);
+      storage.setCurrentUser(null);
+      toast.error('Tu sesión ha expirado. Inicia sesión nuevamente.');
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login');
+      }
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, []);
 
   const login = async (email: string, password: string): Promise<User> => {
     const response = await requestLogin(email, password);

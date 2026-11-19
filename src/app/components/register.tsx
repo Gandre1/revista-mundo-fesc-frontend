@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { useAuth } from './auth-context';
 import axios from 'axios';
+import { getPasswordValidationError } from '../lib/password-validation';
 
 const FESC_RED = '#e30513';
 const FESC_DARK_RED = '#9c0f06';
@@ -44,14 +45,9 @@ export function Register() {
       return;
     }
 
-    if (
-      formData.password.length < 8 ||
-      !/[a-z]/.test(formData.password) ||
-      !/[A-Z]/.test(formData.password) ||
-      !/\d/.test(formData.password) ||
-      !/[^A-Za-z0-9]/.test(formData.password)
-    ) {
-      setErrorMessage('La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial.');
+    const passwordError = getPasswordValidationError(formData.password);
+    if (passwordError) {
+      setErrorMessage(passwordError);
       return;
     }
 

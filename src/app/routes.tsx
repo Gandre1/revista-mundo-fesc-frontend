@@ -1,5 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { Login } from './components/login';
+import { ForgotPassword } from './components/forgot-password';
+import { ResetPassword } from './components/reset-password';
 import { Register } from './components/register';
 import { SubmissionWizardNew } from './components/submission-wizard';
 import { SubmissionSuccess } from './components/submission-success';
@@ -355,6 +357,14 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <Login />,
+  },
+  {
+    path: '/forgot-password',
+    element: <ForgotPassword />,
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPassword />,
   },
   {
     path: '/register',
