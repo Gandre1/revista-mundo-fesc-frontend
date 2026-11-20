@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { FileText, LogOut, BookOpen, Menu, X, ChevronRight, User, Mail } from 'lucide-react';
+import { FileText, LogOut, BookOpen, Menu, X, User, Mail, History } from 'lucide-react';
 import { NotificationBell } from './notification-bell';
 import { LanguageSelector } from './language-selector';
 import { useAuth } from './auth-context';
@@ -31,6 +31,7 @@ export function RevisorLayout({ children }: RevisorLayoutProps) {
 
   const navigation = [
     { name: 'Asignados a mí', href: '/revisor/dashboard', icon: FileText },
+    { name: 'Historial de dictámenes', href: '/revisor/historial', icon: History },
     { name: 'Mensajería', href: '/revisor/mensajeria', icon: Mail },
     { name: 'Mi Perfil', href: '/revisor/profile', icon: User },
   ];
@@ -109,6 +110,18 @@ export function RevisorLayout({ children }: RevisorLayoutProps) {
             >
               {i18n.t('menu.assignedToMe')}
             </Link>
+            <Link
+              to="/revisor/historial"
+              onClick={() => setSidebarOpen(false)}
+              className={`mt-1 block px-3 py-2 text-sm transition-colors ${
+                isActive('/revisor/historial')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/revisor/historial') ? FESC_RED : undefined }}
+            >
+              Historial de dictámenes
+            </Link>
           </div>
 
           {/* Sección: Comunicación */}
@@ -181,6 +194,7 @@ export function RevisorLayout({ children }: RevisorLayoutProps) {
             <div>
               <h1 className="text-xl font-semibold text-gray-900">
                 {(location.pathname === '/revisor/dashboard' || location.pathname.startsWith('/revisor/asignados')) && i18n.t('page.myReviews')}
+                {location.pathname.startsWith('/revisor/historial') && 'Historial de dictámenes'}
                 {location.pathname.startsWith('/revisor/mensajeria') && i18n.t('page.messaging')}
                 {location.pathname.startsWith('/revisor/profile') && i18n.t('page.myProfile')}
               </h1>

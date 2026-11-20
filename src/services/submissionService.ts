@@ -129,6 +129,75 @@ export interface SubmissionReview {
   estado?: string | null;
 }
 
+export type ReviewerRecommendation =
+  | 'aceptar'
+  | 'revisiones_menores'
+  | 'revisiones_mayores'
+  | 'rechazar';
+
+export interface StructuredReviewerComments {
+  fortalezas: string;
+  debilidades: string;
+  metodologia: string;
+  comentario_confidencial: string;
+}
+
+export interface ReviewerAssignment {
+  id: string | number;
+  submission_id: string;
+  titulo: string;
+  seccion: string | null;
+  fecha_limite: string;
+  estado_revision: string;
+  estado_envio: string;
+  fecha_envio: string | null;
+  recomendacion: ReviewerRecommendation | null;
+  archivo_nombre: string | null;
+  archivo_tamano: number | null;
+}
+
+export interface ReviewerDecision {
+  id: string | number;
+  submission_id: string;
+  reviewer_id: string;
+  historial_id: string | number | null;
+  fecha_limite: string | null;
+  estado: string;
+  recomendacion: ReviewerRecommendation | null;
+  comentarios_autor: string | null;
+  comentarios_editor: StructuredReviewerComments | string | null;
+  fecha_dictamen: string | null;
+  archivo_nombre: string | null;
+  archivo_tamano: number | null;
+}
+
+export interface EditorialReviewerDecision {
+  id: string | number;
+  historial_id: string | number | null;
+  reviewer_id: string;
+  reviewer_nombre: string;
+  recomendacion: ReviewerRecommendation;
+  comentarios_autor: string;
+  comentarios_editor: StructuredReviewerComments | string;
+  fecha_dictamen: string;
+  archivo_nombre: string | null;
+  archivo_tamano: number | null;
+}
+
+export interface ReviewerReviewHistoryEntry {
+  id: string | number;
+  submission_id: string;
+  titulo: string;
+  seccion: string | null;
+  estado_envio: string;
+  fecha_dictamen: string | null;
+  recomendacion: ReviewerRecommendation | null;
+  comentarios_autor: string | null;
+  comentarios_editor: StructuredReviewerComments | string | null;
+  archivo_nombre: string | null;
+  archivo_tamano: number | null;
+}
+
 export interface SubmissionAuditLog {
   id: string | number;
   submission_id: string;
@@ -201,6 +270,7 @@ export interface SubmissionDetail {
   estado: string;
   status?: string | null;
   revisores?: SubmissionReview[];
+  dictamenes?: EditorialReviewerDecision[];
   paso_envio?: number | string | null;
   borrador: boolean | number;
   paso_wizard: number;
@@ -208,6 +278,62 @@ export interface SubmissionDetail {
   created_at: string;
   archivos: SubmissionFile[];
   autores: SubmissionAuthor[];
+}
+
+async function fetchReviewerReviewAttachment(
+  submissionId: string,
+  reviewerId: string,
+  historyId: string | number,
+  download: boolean
+): Promise<Blob> {
+  const query = download ? '?download=1' : '';
+  const response = await fetch(
+    `${API_URL}/submissions/${encodeURIComponent(submissionId)}/reviewers/${encodeURIComponent(reviewerId)}/history/${encodeURIComponent(String(historyId))}/attachment${query}`,
+    {
+      headers: {
+        'Bypass-Tunnel-Reminder': 'true',
+        ...getApiAuthHeaders(),
+      },
+    }
+  );
+  if (!response.ok) {
+    if (response.status === 401) notifySessionExpired();
+    const responseText = await response.text();
+    let message = responseText || 'No fue posible obtener el archivo de anotaciones.';
+    try {
+      const errorData = JSON.parse(responseText) as { message?: string };
+      message = errorData.message || message;
+    } catch {
+      // El servidor puede responder texto plano cuando ocurre un error.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
+export async function openReviewerReviewAttachment(
+  submissionId: string,
+  reviewerId: string,
+  historyId: string | number,
+  fileName: string,
+  download = false
+): Promise<void> {
+  const blob = await fetchReviewerReviewAttachment(submissionId, reviewerId, historyId, download);
+  const objectUrl = URL.createObjectURL(blob);
+  const isPdf = fileName.toLocaleLowerCase().endsWith('.pdf');
+  const preview = isPdf && !download;
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.rel = 'noopener noreferrer';
+  if (preview) {
+    link.target = '_blank';
+  } else {
+    link.download = fileName;
+  }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }
 
 export async function getSubmissionStats(): Promise<SubmissionStats> {
@@ -246,6 +372,42 @@ export const submissionService = {
   markNotificationAsRead,
   deleteNotification,
   clearNotifications,
+
+  getMyReviews: async () => {
+    return apiFetch<{ reviews: ReviewerAssignment[] }>('/submissions/my-reviews');
+  },
+
+  getReviewerReviewHistory: async () => {
+    return apiFetch<{ reviews: ReviewerReviewHistoryEntry[] }>('/submissions/review-history');
+  },
+
+  getReviewerReview: async (id: string) => {
+    return apiFetch<{ review: ReviewerDecision }>(
+      `/submissions/${encodeURIComponent(id)}/review`
+    );
+  },
+
+  saveReviewerReview: async (
+    id: string,
+    data: {
+      recomendacion: ReviewerRecommendation;
+      comentarios_autor: string;
+      comentarios_editor: StructuredReviewerComments;
+      archivo_anotaciones?: File | null;
+    }
+  ) => {
+    const formData = new FormData();
+    formData.append('recomendacion', data.recomendacion);
+    formData.append('comentarios_autor', data.comentarios_autor);
+    formData.append('comentarios_editor', JSON.stringify(data.comentarios_editor));
+    if (data.archivo_anotaciones) {
+      formData.append('archivo_anotaciones', data.archivo_anotaciones);
+    }
+    return apiFetch<{ message: string; submissionId: string; historyId: string | number }>(
+      `/submissions/${encodeURIComponent(id)}/review`,
+      { method: 'PUT', body: formData }
+    );
+  },
 
   getMySubmissions: async () => {
     return apiFetch<{ submissions: SubmissionSummary[] }>('/submissions/my-submissions');

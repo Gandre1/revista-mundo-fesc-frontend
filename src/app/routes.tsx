@@ -14,6 +14,7 @@ import { RevisorLayout } from './components/revisor-layout';
 import { Dashboard } from './components/dashboard';
 import { DashboardAutor } from './components/dashboard-autor';
 import { DashboardRevisor } from './components/dashboard-revisor';
+import { ReviewerReviewHistory } from './components/reviewer-review-history';
 import { Profile } from './components/profile';
 import { Mensajeria } from './components/mensajeria';
 import { Navigate } from 'react-router';
@@ -307,6 +308,16 @@ function RevisorDashboardPage() {
   );
 }
 
+function RevisorReviewHistoryPage() {
+  return (
+    <ProtectedRoute allowedRoles={['reviewer']}>
+      <RevisorLayout>
+        <ReviewerReviewHistory />
+      </RevisorLayout>
+    </ProtectedRoute>
+  );
+}
+
 function RevisorSubmissionDetailPage() {
   return (
     <ProtectedRoute allowedRoles={['reviewer']}>
@@ -517,6 +528,10 @@ export const router = createBrowserRouter([
   {
     path: '/revisor/dashboard',
     element: <RevisorDashboardPage />,
+  },
+  {
+    path: '/revisor/historial',
+    element: <RevisorReviewHistoryPage />,
   },
   {
     path: '/revisor/asignados',

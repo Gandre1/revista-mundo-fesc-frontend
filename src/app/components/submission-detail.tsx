@@ -35,6 +35,9 @@ import {
   getSubmissionScieloXmlUrl,
   downloadSubmissionScieloXml,
   ReviewerSummary,
+  ReviewerRecommendation,
+  StructuredReviewerComments,
+  openReviewerReviewAttachment,
   submissionService,
   SubmissionAuditLog,
   SubmissionDetail as Submission,
@@ -73,6 +76,46 @@ const EDITORIAL_STAGES = [
   { label: 'Publicado', description: 'El artículo está disponible en la revista.', Icon: Check },
 ];
 
+const REVIEWER_RECOMMENDATIONS: { value: ReviewerRecommendation; label: string }[] = [
+  { value: 'aceptar', label: 'Aceptar' },
+  { value: 'revisiones_menores', label: 'Aceptar con revisiones menores' },
+  { value: 'revisiones_mayores', label: 'Solicitar revisiones mayores' },
+  { value: 'rechazar', label: 'Rechazar' },
+];
+
+const emptyReviewerComments = (): StructuredReviewerComments => ({
+  fortalezas: '',
+  debilidades: '',
+  metodologia: '',
+  comentario_confidencial: '',
+});
+
+function parseReviewerComments(value: string | StructuredReviewerComments | null | undefined): StructuredReviewerComments {
+  let candidate: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      candidate = JSON.parse(value);
+    } catch {
+      return { ...emptyReviewerComments(), comentario_confidencial: value };
+    }
+  }
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return emptyReviewerComments();
+  }
+
+  const record = candidate as Record<string, unknown>;
+  const getText = (key: keyof StructuredReviewerComments): string => {
+    const text = record[key];
+    return typeof text === 'string' ? text : '';
+  };
+  return {
+    fortalezas: getText('fortalezas'),
+    debilidades: getText('debilidades'),
+    metodologia: getText('metodologia'),
+    comentario_confidencial: getText('comentario_confidencial'),
+  };
+}
+
 interface SubmissionDetailProps {
   submissionId?: string;
   onBack?: () => void;
@@ -85,6 +128,7 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const navigate = useNavigate();
   const { user } = useAuth();
   const canManageSubmissions = user?.role === 'editor' || user?.role === 'admin';
+  const isReviewer = user?.role === 'reviewer';
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +155,19 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
   const [selectedDecision, setSelectedDecision] = useState<(typeof EDITORIAL_DECISIONS)[number] | null>(null);
   const [editorialComment, setEditorialComment] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewRecommendation, setReviewRecommendation] = useState<ReviewerRecommendation | ''>('');
+  const [reviewAuthorComments, setReviewAuthorComments] = useState('');
+  const [hasSubmittedReview, setHasSubmittedReview] = useState(false);
+  const [reviewAttachment, setReviewAttachment] = useState<File | null>(null);
+  const [savedReviewAttachment, setSavedReviewAttachment] = useState<{
+    nombre: string;
+    tamano: number | null;
+    historyId: string | number;
+  } | null>(null);
+  const [reviewEditorComments, setReviewEditorComments] = useState<StructuredReviewerComments>(emptyReviewerComments);
+  const [savingReviewerReview, setSavingReviewerReview] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [issuesLoading, setIssuesLoading] = useState(false);
   const [issuesError, setIssuesError] = useState<string | null>(null);
@@ -236,6 +293,42 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!isReviewer || !id) return;
+
+    let active = true;
+    setReviewLoading(true);
+    setReviewError(null);
+    submissionService.getReviewerReview(id)
+      .then(({ review }) => {
+        if (!active) return;
+        setReviewRecommendation(review.recomendacion || '');
+        setReviewAuthorComments(review.comentarios_autor || '');
+        setHasSubmittedReview(review.estado === 'completado');
+        setSavedReviewAttachment(review.archivo_nombre && review.historial_id !== null
+          ? {
+            nombre: review.archivo_nombre,
+            tamano: review.archivo_tamano,
+            historyId: review.historial_id,
+          }
+          : null);
+        setReviewEditorComments(parseReviewerComments(review.comentarios_editor));
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          console.error(`Error al cargar el dictamen del envío ${id}:`, cause);
+          setReviewError(cause instanceof Error ? cause.message : 'No fue posible cargar el dictamen.');
+        }
+      })
+      .finally(() => {
+        if (active) setReviewLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id, isReviewer]);
 
   useEffect(() => {
     if (!canManageSubmissions) return;
@@ -550,6 +643,62 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
     }
   };
 
+  const submitReviewerReview = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!id || !reviewRecommendation || savingReviewerReview) return;
+    if (!reviewAuthorComments.trim()) {
+      toast.error('Escribe los comentarios dirigidos al autor.');
+      return;
+    }
+    if (!Object.values(reviewEditorComments).some((comment) => comment.trim())) {
+      toast.error('Completa al menos un comentario estructurado para el editor.');
+      return;
+    }
+
+    setSavingReviewerReview(true);
+    setReviewError(null);
+    try {
+      const { historyId } = await submissionService.saveReviewerReview(id, {
+        recomendacion: reviewRecommendation,
+        comentarios_autor: reviewAuthorComments.trim(),
+        comentarios_editor: reviewEditorComments,
+        archivo_anotaciones: reviewAttachment,
+      });
+      setHasSubmittedReview(true);
+      if (reviewAttachment) {
+        setSavedReviewAttachment({
+          nombre: reviewAttachment.name,
+          tamano: reviewAttachment.size,
+          historyId,
+        });
+        setReviewAttachment(null);
+      } else if (savedReviewAttachment) {
+        setSavedReviewAttachment({ ...savedReviewAttachment, historyId });
+      }
+      toast.success('Dictamen guardado y enviado al editor.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'No fue posible guardar el dictamen.';
+      setReviewError(message);
+      toast.error(message);
+    } finally {
+      setSavingReviewerReview(false);
+    }
+  };
+
+  const openReviewAttachment = async (
+    reviewerId: string,
+    historyId: string | number,
+    fileName: string,
+    download = false
+  ) => {
+    if (!id) return;
+    try {
+      await openReviewerReviewAttachment(id, reviewerId, historyId, fileName, download);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'No fue posible abrir el archivo de anotaciones.');
+    }
+  };
+
   if (loading) {
     return <div className="p-8 text-center text-sm text-gray-500">Cargando información del artículo...</div>;
   }
@@ -796,6 +945,89 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
             <p className="text-sm text-gray-500">No hay revisores asignados.</p>
           )}
         </div>
+
+        {canManageSubmissions && (submission.dictamenes?.length ?? 0) > 0 && (
+          <div className="mt-4 space-y-4">
+            {submission.dictamenes?.map((decision) => {
+              const editorComments = parseReviewerComments(decision.comentarios_editor);
+              const commentSections: [string, string][] = [
+                ['Fortalezas y aportes', editorComments.fortalezas],
+                ['Debilidades y aspectos por mejorar', editorComments.debilidades],
+                ['Observaciones sobre metodología', editorComments.metodologia],
+                ['Recomendación confidencial', editorComments.comentario_confidencial],
+              ].filter(([, comment]) => Boolean(comment.trim()));
+
+              return (
+                <article key={decision.id} className="rounded-md border border-amber-200 bg-amber-50 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold text-amber-950">
+                      Dictamen de {decision.reviewer_nombre}
+                    </h3>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
+                      {REVIEWER_RECOMMENDATIONS.find(({ value }) => value === decision.recomendacion)?.label
+                        || 'Recomendación no disponible'}
+                    </span>
+                  </div>
+                  {decision.comentarios_autor && (
+                    <div className="mb-3">
+                      <h4 className="text-xs font-bold uppercase text-gray-700">Comentarios para el autor</h4>
+                      <p className="mt-1 whitespace-pre-line text-sm text-gray-800">{decision.comentarios_autor}</p>
+                    </div>
+                  )}
+                  <div className="space-y-3 border-t border-amber-200 pt-3">
+                    <h4 className="text-xs font-bold uppercase text-amber-950">Comentarios confidenciales para el editor</h4>
+                    {commentSections.length ? commentSections.map(([label, comment]) => (
+                      <div key={label}>
+                        <p className="text-xs font-semibold text-gray-700">{label}</p>
+                        <p className="whitespace-pre-line text-sm text-gray-800">{comment}</p>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-gray-600">No hay comentarios estructurados disponibles.</p>
+                    )}
+                  </div>
+                  {decision.archivo_nombre && decision.historial_id !== null && (
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-amber-200 pt-3">
+                      <FileText className="h-4 w-4 shrink-0 text-gray-600" />
+                      <span className="mr-auto break-all text-sm text-gray-800">
+                        {decision.archivo_nombre}
+                        {decision.archivo_tamano !== null && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            {(decision.archivo_tamano / 1024 / 1024).toFixed(2)} MB
+                          </span>
+                        )}
+                      </span>
+                      {decision.archivo_nombre.toLocaleLowerCase().endsWith('.pdf') && (
+                        <button
+                          type="button"
+                          onClick={() => void openReviewAttachment(
+                            decision.reviewer_id,
+                            decision.historial_id,
+                            decision.archivo_nombre
+                          )}
+                          className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          <Eye className="h-4 w-4" /> Ver
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void openReviewAttachment(
+                          decision.reviewer_id,
+                          decision.historial_id,
+                          decision.archivo_nombre,
+                          true
+                        )}
+                        className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <Download className="h-4 w-4" /> Descargar
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
 
         {submission.comentarios_editor?.trim() && (
           <article className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4">
@@ -1213,6 +1445,167 @@ export function SubmissionDetail({ submissionId, onBack }: SubmissionDetailProps
       </section>
       )}
 
+      {activeDetailTab === 'resumen' && isReviewer && (
+        <section className="order-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="flex items-center gap-2 text-lg font-semibold" style={{ color: FESC_DARK_RED }}>
+              <ClipboardCheck className="h-5 w-5" style={{ color: FESC_RED }} />
+              Dictamen de evaluación
+            </h2>
+            {hasSubmittedReview && (
+              <span className="w-fit rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                Dictamen enviado
+              </span>
+            )}
+          </div>
+
+          {reviewLoading ? (
+            <p role="status" className="text-sm text-gray-500">Cargando el dictamen guardado...</p>
+          ) : (
+            <form className="space-y-5" onSubmit={(event) => void submitReviewerReview(event)}>
+              {reviewError && (
+                <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {reviewError}
+                </p>
+              )}
+              <label className="block text-sm font-medium text-gray-700">
+                Recomendación final <span className="text-red-600">*</span>
+                <select
+                  required
+                  value={reviewRecommendation}
+                  onChange={(event) => setReviewRecommendation(
+                    REVIEWER_RECOMMENDATIONS.find(({ value }) => value === event.target.value)?.value || ''
+                  )}
+                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Selecciona una recomendación</option>
+                  {REVIEWER_RECOMMENDATIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block text-sm font-medium text-gray-700">
+                Comentarios para el autor <span className="text-red-600">*</span>
+                <Textarea
+                  required
+                  maxLength={10000}
+                  value={reviewAuthorComments}
+                  onChange={(event) => setReviewAuthorComments(event.target.value)}
+                  placeholder="Incluye observaciones constructivas que puedan compartirse con el autor."
+                  className="mt-1 min-h-32"
+                />
+              </label>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700" htmlFor="review-annotation-file">
+                  Archivo con anotaciones (PDF, DOC o DOCX)
+                </label>
+                <input
+                  id="review-annotation-file"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    if (!file) return;
+                    const allowedExtension = /\.(pdf|doc|docx)$/i.test(file.name);
+                    if (!allowedExtension) {
+                      toast.error('Solo se permiten archivos PDF, DOC o DOCX.');
+                      event.currentTarget.value = '';
+                      return;
+                    }
+                    if (file.size > 10 * 1024 * 1024) {
+                      toast.error('El archivo no debe superar 10 MB.');
+                      event.currentTarget.value = '';
+                      return;
+                    }
+                    setReviewAttachment(file);
+                  }}
+                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">Tamaño máximo: 10 MB. Si ya hay un archivo, uno nuevo lo reemplazará.</p>
+                {reviewAttachment && (
+                  <p className="mt-2 text-sm text-gray-700">Seleccionado: {reviewAttachment.name}</p>
+                )}
+                {savedReviewAttachment && user?.id && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-gray-200 p-3">
+                    <span className="mr-auto break-all text-sm text-gray-700">
+                      Archivo guardado: {savedReviewAttachment.nombre}
+                    </span>
+                    {savedReviewAttachment.nombre.toLocaleLowerCase().endsWith('.pdf') && (
+                      <button
+                        type="button"
+                        onClick={() => void openReviewAttachment(
+                          user.id,
+                          savedReviewAttachment.historyId,
+                          savedReviewAttachment.nombre
+                        )}
+                        className="inline-flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        <Eye className="h-4 w-4" /> Ver
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void openReviewAttachment(
+                        user.id,
+                        savedReviewAttachment.historyId,
+                        savedReviewAttachment.nombre,
+                        true
+                      )}
+                      className="inline-flex items-center gap-1 rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Download className="h-4 w-4" /> Descargar
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <fieldset className="space-y-4 rounded-md border border-amber-200 bg-amber-50/50 p-4">
+                <legend className="px-2 text-sm font-semibold text-amber-950">
+                  Comentarios confidenciales para el editor
+                </legend>
+                <p className="text-xs text-amber-900">
+                  Estos comentarios solo son visibles para el equipo editorial.
+                </p>
+                {([
+                  ['fortalezas', 'Fortalezas y aportes'],
+                  ['debilidades', 'Debilidades y aspectos por mejorar'],
+                  ['metodologia', 'Observaciones sobre metodología'],
+                  ['comentario_confidencial', 'Recomendación confidencial al editor'],
+                ] as const).map(([field, label]) => (
+                  <label key={field} className="block text-sm font-medium text-gray-700">
+                    {label}
+                    <Textarea
+                      maxLength={5000}
+                      value={reviewEditorComments[field]}
+                      onChange={(event) => setReviewEditorComments((current) => ({
+                        ...current,
+                        [field]: event.target.value,
+                      }))}
+                      className="mt-1 min-h-20 bg-white"
+                    />
+                  </label>
+                ))}
+              </fieldset>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-gray-500">La recomendación y al menos un comentario confidencial son obligatorios.</p>
+                <button
+                  type="submit"
+                  disabled={savingReviewerReview || !reviewRecommendation || !reviewAuthorComments.trim()}
+                  className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ backgroundColor: FESC_DARK_RED }}
+                >
+                  {savingReviewerReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {savingReviewerReview ? 'Guardando...' : hasSubmittedReview ? 'Actualizar dictamen' : 'Enviar dictamen'}
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
+
       {activeDetailTab === 'resumen' && (
       <div className="order-4 grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
@@ -1577,6 +1970,7 @@ function formatAuditAction(action: string): string {
     status_updated: 'Actualización de estado',
     editor_assigned: 'Asignación de editor',
     reviewer_assigned: 'Asignación de revisor',
+    review_submitted: 'Dictamen recibido',
     issue_assigned: 'Asignación de volumen',
     metadata_updated: 'Actualización de metadatos',
   };
