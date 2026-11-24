@@ -267,6 +267,18 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             >
               Logs de auditoría
             </Link>
+            <Link
+              to="/admin/help"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/admin/help')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/admin/help') ? FESC_RED : undefined }}
+            >
+              Centro de ayuda
+            </Link>
           </div>
 
           {/* Sección: Comunicación */}

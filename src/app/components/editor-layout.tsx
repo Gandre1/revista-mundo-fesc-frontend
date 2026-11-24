@@ -121,6 +121,18 @@ export function EditorLayout({ children }: EditorLayoutProps) {
             >
               Volúmenes
             </Link>
+            <Link
+              to="/editor/help"
+              onClick={() => setSidebarOpen(false)}
+              className={`block px-3 py-2 text-sm transition-colors ${
+                isActive('/editor/help')
+                  ? 'font-semibold'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              style={{ color: isActive('/editor/help') ? FESC_RED : undefined }}
+            >
+              Centro de ayuda
+            </Link>
           </div>
 
           {/* Sección: Estadísticas */}
@@ -250,6 +262,7 @@ export function EditorLayout({ children }: EditorLayoutProps) {
                 {location.pathname.startsWith('/editor/statistics') && i18n.t('page.statistics')}
                 {location.pathname.startsWith('/editor/mensajeria') && i18n.t('page.messaging')}
                 {location.pathname.startsWith('/editor/profile') && i18n.t('page.myProfile')}
+                {location.pathname.startsWith('/editor/help') && 'Centro de ayuda'}
               </h1>
             </div>
             <div className="flex items-center gap-4">

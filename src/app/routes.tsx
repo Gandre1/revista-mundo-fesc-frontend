@@ -26,6 +26,8 @@ import { EmailTemplatesManagement } from './components/email-templates-managemen
 import { AnalyticsDashboard } from './components/analytics-dashboard';
 import { AuditLogsPage } from './components/audit-logs-page';
 import { getDashboardPath, useAuth } from './components/auth-context';
+import { PublicHelp } from './components/public-help';
+import { HelpManagement } from './components/help-management';
 
 function UnknownRouteRedirect() {
   const { user } = useAuth();
@@ -134,6 +136,16 @@ function AdminAuditLogsPage() {
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout>
         <AuditLogsPage />
+      </AdminLayout>
+    </ProtectedRoute>
+  );
+}
+
+function AdminHelpManagementPage() {
+  return (
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminLayout>
+        <HelpManagement />
       </AdminLayout>
     </ProtectedRoute>
   );
@@ -277,6 +289,16 @@ function EditorEmailTemplatesPage() {
   );
 }
 
+function EditorHelpManagementPage() {
+  return (
+    <ProtectedRoute allowedRoles={['editor']}>
+      <EditorLayout>
+        <HelpManagement />
+      </EditorLayout>
+    </ProtectedRoute>
+  );
+}
+
 function EditorAnalyticsPage() {
   return (
     <ProtectedRoute allowedRoles={['editor']}>
@@ -366,6 +388,10 @@ export const router = createBrowserRouter([
     element: <PublicSubmissionDetailPage />,
   },
   {
+    path: '/help',
+    element: <PublicHelp />,
+  },
+  {
     path: '/login',
     element: <Login />,
   },
@@ -438,6 +464,10 @@ export const router = createBrowserRouter([
     path: '/admin/audit-logs',
     element: <AdminAuditLogsPage />,
   },
+  {
+    path: '/admin/help',
+    element: <AdminHelpManagementPage />,
+  },
   // Autor routes
   {
     path: '/autor',
@@ -507,6 +537,10 @@ export const router = createBrowserRouter([
   {
     path: '/editor/plantillas-correo',
     element: <EditorEmailTemplatesPage />,
+  },
+  {
+    path: '/editor/help',
+    element: <EditorHelpManagementPage />,
   },
   {
     path: '/editor/statistics',
