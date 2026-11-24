@@ -22,6 +22,7 @@ import { ProtectedRoute } from './components/protected-route';
 import { IssuesManagement } from './components/issues-management';
 import { PublicArchive } from './components/public-archive';
 import { PublicSubmissionDetailPage } from './components/public-submission-detail';
+import { PublicSearch } from './components/public-search';
 import { EmailTemplatesManagement } from './components/email-templates-management';
 import { AnalyticsDashboard } from './components/analytics-dashboard';
 import { AuditLogsPage } from './components/audit-logs-page';
@@ -382,6 +383,10 @@ export const router = createBrowserRouter([
   {
     path: '/public/issues/:id',
     element: <PublicArchive />,
+  },
+  {
+    path: '/public/search',
+    element: <PublicSearch />,
   },
   {
     path: '/public/submissions/:id',

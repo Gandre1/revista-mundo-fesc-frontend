@@ -110,6 +110,8 @@ export function PublicArchive() {
           <nav className="mt-4 flex flex-wrap items-center gap-x-5 text-sm" aria-label="Navegación principal">
             <Link to="/" className="font-semibold text-[#e30513]">Inicio</Link>
             <Link to="/" className="text-gray-700 transition-colors hover:text-[#e30513]">Actual</Link>
+            <Link to="/public/issues" className="text-gray-700 transition-colors hover:text-[#e30513]">Archivo histórico</Link>
+            <Link to="/public/search" className="text-gray-700 transition-colors hover:text-[#e30513]">Búsqueda avanzada</Link>
             <Link to="/help" className="text-gray-700 transition-colors hover:text-[#e30513]">Centro de ayuda</Link>
           </nav>
         </div>
