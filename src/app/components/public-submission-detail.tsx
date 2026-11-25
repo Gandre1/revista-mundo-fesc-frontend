@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { BookOpen, Download, ExternalLink } from 'lucide-react';
+import { BookOpen, Download, ExternalLink, Eye } from 'lucide-react';
+import { toast } from 'sonner';
 import { getDashboardPath, useAuth } from './auth-context';
 import {
+  downloadPublicArticleCitation,
   downloadScieloXml,
+  getPublicArticleCitation,
+  getPublicArticleMetrics,
   getPublicSubmissionDetail,
   getScieloXmlUrl,
+  type PublicArticleCitation,
+  type PublicArticleMetrics,
   type PublicSubmissionDetail,
 } from '../../services/publicService';
 import { resolveApiUrl } from '../lib/api';
@@ -18,7 +24,10 @@ export function PublicSubmissionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [citationFormat, setCitationFormat] = useState<'apa' | 'ieee'>('apa');
-  const [copiedCitation, setCopiedCitation] = useState(false);
+  const [citation, setCitation] = useState<PublicArticleCitation | null>(null);
+  const [citationLoading, setCitationLoading] = useState(false);
+  const [metrics, setMetrics] = useState<PublicArticleMetrics | null>(null);
+  const [citationDownload, setCitationDownload] = useState<'bibtex' | 'ris' | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -51,57 +60,76 @@ export function PublicSubmissionDetailPage() {
   const article = detail?.article;
   const issue = detail?.issue;
 
-  const getInitials = (name: string) =>
-    name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => `${part.charAt(0).toUpperCase()}.`)
-      .join(' ');
+  useEffect(() => {
+    if (!article?.id) {
+      setCitation(null);
+      return;
+    }
 
-  const getApaCitation = () => {
-    if (!article) return '';
-    const authors = article.authors.map((author) => {
-      const surname = author.apellidos?.trim();
-      const initials = getInitials(author.nombre || '');
-      return surname ? `${surname}, ${initials}`.trim() : '';
-    }).filter(Boolean);
-    const authorsText = authors.length > 1
-      ? `${authors.slice(0, -1).join(', ')}, & ${authors[authors.length - 1]}`
-      : authors[0] || '';
-    const year = issue?.year || '';
-    const title = article.titulo || '';
-    const volume = issue?.volume ? `, ${issue.volume}` : '';
-    const number = issue?.number ? `(${issue.number})` : '';
-    const doi = article.doi ? `. https://doi.org/${article.doi.replace(/^https?:\/\/doi\.org\//i, '')}` : '';
-    return `${authorsText}${authorsText ? '. ' : ''}(${year}). ${title}. Revista Mundo FESC${volume}${number}${doi}`;
-  };
+    let active = true;
+    setCitation(null);
+    setCitationLoading(true);
+    getPublicArticleCitation(article.id, citationFormat)
+      .then((result) => {
+        if (active) setCitation(result);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          toast.error(cause instanceof Error ? cause.message : 'No fue posible cargar la cita.');
+        }
+      })
+      .finally(() => {
+        if (active) setCitationLoading(false);
+      });
 
-  const getIeeeCitation = () => {
-    if (!article) return '';
-    const authors = article.authors.map((author) => {
-      const initials = getInitials(author.nombre || '');
-      return `${initials} ${author.apellidos || ''}`.trim();
-    }).filter(Boolean);
-    const authorsText = authors.length > 1
-      ? `${authors.slice(0, -1).join(', ')}, and ${authors[authors.length - 1]}`
-      : authors[0] || '';
-    const volume = issue?.volume ? `, vol. ${issue.volume}` : '';
-    const number = issue?.number ? `, no. ${issue.number}` : '';
-    const year = issue?.year ? `, ${issue.year}` : '';
-    const doi = article.doi ? `, doi: ${article.doi}` : '';
-    return `${authorsText}, "${article.titulo}," Revista Mundo FESC${volume}${number}${year}${doi}.`;
-  };
+    return () => {
+      active = false;
+    };
+  }, [article?.id, citationFormat]);
 
-  const citationText = citationFormat === 'apa' ? getApaCitation() : getIeeeCitation();
+  useEffect(() => {
+    if (!article?.id) {
+      setMetrics(null);
+      return;
+    }
+
+    let active = true;
+    setMetrics(null);
+    getPublicArticleMetrics(article.id)
+      .then((result) => {
+        if (active) setMetrics(result);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          toast.error(cause instanceof Error ? cause.message : 'No fue posible cargar las métricas.');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [article?.id]);
 
   const copyCitation = async () => {
+    if (!citation || citationLoading) return;
     try {
-      await navigator.clipboard.writeText(citationText);
-      setCopiedCitation(true);
-      window.setTimeout(() => setCopiedCitation(false), 1800);
-    } catch {
-      setError('No fue posible copiar la cita al portapapeles.');
+      await navigator.clipboard.writeText(citation.citation);
+      toast.success(`Cita ${citation.style === 'apa' ? 'APA 7' : 'IEEE'} copiada al portapapeles.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'No fue posible copiar la cita al portapapeles.');
+    }
+  };
+
+  const downloadCitation = async (format: 'bibtex' | 'ris') => {
+    if (!article || citationDownload) return;
+    setCitationDownload(format);
+    try {
+      await downloadPublicArticleCitation(article.id, format);
+      toast.success(`Referencia ${format === 'bibtex' ? 'BibTeX' : 'RIS'} descargada.`);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'No fue posible descargar la referencia.');
+    } finally {
+      setCitationDownload(null);
     }
   };
 
@@ -189,6 +217,17 @@ export function PublicSubmissionDetailPage() {
               {article.titulo}
             </h1>
 
+            <section className="mt-5 flex flex-wrap gap-3" aria-label="Métricas públicas del artículo">
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
+                <Eye className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                <span>{metrics ? metrics.views.toLocaleString() : '—'} vistas</span>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
+                <Download className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                <span>{metrics ? metrics.downloads.toLocaleString() : '—'} descargas de galeras</span>
+              </div>
+            </section>
+
             {article.authors.length > 0 && (
               <section className="mt-5" aria-label="Autores">
                 <h2 className="text-sm font-bold text-slate-900">Autores</h2>
@@ -226,7 +265,7 @@ export function PublicSubmissionDetailPage() {
 
             <section className="mt-8 rounded-lg border border-slate-200 bg-slate-50 p-5" aria-labelledby="export-heading">
               <h2 id="export-heading" className="text-sm font-bold text-slate-900">
-                Citar / Exportar metadatos
+                Cómo citar
               </h2>
               <div className="mt-4 border-b border-slate-200" role="tablist" aria-label="Formato de cita">
                 <button
@@ -257,18 +296,39 @@ export function PublicSubmissionDetailPage() {
                 </button>
               </div>
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start">
-                <p className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">
-                  {citationText}
+                <p aria-live="polite" className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">
+                  {citationLoading
+                    ? 'Cargando referencia...'
+                    : citation?.citation || 'No fue posible obtener la referencia bibliográfica.'}
                 </p>
                 <button
                   type="button"
                   onClick={() => void copyCitation()}
+                  disabled={!citation || citationLoading}
                   className="shrink-0 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
-                  {copiedCitation ? 'Cita copiada' : 'Copiar cita'}
+                  Copiar cita
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void downloadCitation('bibtex')}
+                  disabled={citationDownload !== null}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {citationDownload === 'bibtex' ? 'Descargando BibTeX...' : 'Descargar BibTeX (.bib)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void downloadCitation('ris')}
+                  disabled={citationDownload !== null}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" />
+                  {citationDownload === 'ris' ? 'Descargando RIS...' : 'Descargar RIS (.ris)'}
+                </button>
                 <button
                   type="button"
                   onClick={() => window.open(getScieloXmlUrl(article.id), '_blank', 'noopener,noreferrer')}

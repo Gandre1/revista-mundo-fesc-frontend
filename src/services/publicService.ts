@@ -39,8 +39,64 @@ export interface PublicSubmissionDetail {
   issue: Issue;
 }
 
+export type PublicCitationStyle = 'apa' | 'ieee';
+export type PublicCitationExportFormat = 'bibtex' | 'ris';
+
+export interface PublicArticleCitation {
+  articleId: string;
+  style: PublicCitationStyle;
+  citation: string;
+}
+
+export interface PublicArticleMetrics {
+  articleId: string;
+  views: number;
+  downloads: number;
+}
+
 export function getScieloXmlUrl(submissionId: string): string {
   return `${API_URL}/public/submissions/${encodeURIComponent(submissionId)}/export/scielo-xml`;
+}
+
+export async function getPublicArticleCitation(
+  submissionId: string,
+  style: PublicCitationStyle
+): Promise<PublicArticleCitation> {
+  return apiFetch<PublicArticleCitation>(
+    `/public/articles/${encodeURIComponent(submissionId)}/citation?style=${style}`
+  );
+}
+
+export async function getPublicArticleMetrics(
+  submissionId: string
+): Promise<PublicArticleMetrics> {
+  return apiFetch<PublicArticleMetrics>(
+    `/public/articles/${encodeURIComponent(submissionId)}/metrics`
+  );
+}
+
+export async function downloadPublicArticleCitation(
+  submissionId: string,
+  format: PublicCitationExportFormat
+): Promise<void> {
+  const response = await fetch(
+    `${API_URL}/public/articles/${encodeURIComponent(submissionId)}/citation/export?format=${format}`,
+    { headers: { 'Bypass-Tunnel-Reminder': 'true' } }
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(body?.message || `No fue posible descargar la referencia: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = `article-${submissionId}.${format === 'bibtex' ? 'bib' : 'ris'}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 export async function downloadScieloXml(submissionId: string): Promise<void> {
