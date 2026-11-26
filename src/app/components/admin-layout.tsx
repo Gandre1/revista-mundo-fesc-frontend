@@ -209,29 +209,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {i18n.t('menu.users')}
             </Link>
             <Link
-              to="/admin/statistics/contador-iis"
+              to="/admin/statistics/informe-revision"
               onClick={() => setSidebarOpen(false)}
               className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/statistics/contador-iis')
+                isActive('/admin/statistics/informe-revision')
                   ? 'font-semibold'
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
               }`}
               style={{
-                color: isActive('/admin/statistics/contador-iis') ? FESC_RED : undefined,
+                color: isActive('/admin/statistics/informe-revision') ? FESC_RED : undefined,
               }}
             >
               {i18n.t('menu.reviewReport')}
             </Link>
             <Link
-              to="/admin/statistics/informes"
+              to="/admin/statistics/vistas"
               onClick={() => setSidebarOpen(false)}
               className={`block px-3 py-2 text-sm transition-colors ${
-                isActive('/admin/statistics/informes')
+                isActive('/admin/statistics/vistas')
                   ? 'font-semibold'
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
               }`}
               style={{
-                color: isActive('/admin/statistics/informes') ? FESC_RED : undefined,
+                color: isActive('/admin/statistics/vistas') ? FESC_RED : undefined,
               }}
             >
               {i18n.t('menu.views')}

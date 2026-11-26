@@ -12,6 +12,7 @@ export type ArticleStatus =
 export interface AnalyticsOverview {
   totalArticles: number;
   articlesByStatus: Record<ArticleStatus, number>;
+  articlesBySection: Record<string, number>;
   acceptanceRate: number;
   usersByRole: Record<string, number>;
 }
@@ -38,6 +39,20 @@ export interface IssueSummary {
 
 export interface IssuesSummary {
   issues: IssueSummary[];
+}
+
+export interface ViewsSummary {
+  totalViews: number;
+  totalDownloads: number;
+  articles: {
+    articleId: string | number;
+    title: string;
+    volume: number;
+    number: number;
+    year: number;
+    views: number;
+    downloads: number;
+  }[];
 }
 
 export interface AnalyticsFilters {
@@ -98,6 +113,10 @@ export function getEditorialTimes(filters?: AnalyticsFilters): Promise<Editorial
 
 export function getIssuesSummary(filters?: AnalyticsFilters): Promise<IssuesSummary> {
   return getAnalytics<IssuesSummary>('issues-summary', filters);
+}
+
+export function getViewsSummary(filters?: AnalyticsFilters): Promise<ViewsSummary> {
+  return getAnalytics<ViewsSummary>('views-summary', filters);
 }
 
 export function getReviewersPerformance(filters?: AnalyticsFilters): Promise<ReviewersPerformance> {

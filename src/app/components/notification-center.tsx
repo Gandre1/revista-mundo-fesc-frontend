@@ -2,6 +2,7 @@ import { Bell, X, CheckCircle, AlertTriangle, Info, FileText, Trash2 } from 'luc
 import { useState, useEffect } from 'react';
 import { storage } from '../lib/storage';
 import { Link } from 'react-router';
+import { useAuth } from './auth-context';
 
 const FESC_RED = '#e30513';
 const FESC_GRAY = '#3c3c3b';
@@ -21,6 +22,7 @@ const TYPE_COLORS = {
 };
 
 export function NotificationCenter() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState(storage.getNotifications());
   const [isOpen, setIsOpen] = useState(false);
 
@@ -32,6 +34,18 @@ export function NotificationCenter() {
   }, []);
 
   const unreadCount = storage.getUnreadCount();
+  const getSubmissionPath = (submissionId: string) => {
+    const basePath = user?.role === 'admin'
+      ? '/admin/submissions'
+      : user?.role === 'editor'
+        ? '/editor/submissions'
+        : user?.role === 'reviewer'
+          ? '/revisor/asignados'
+          : user?.role === 'author'
+            ? '/autor/envios'
+            : null;
+    return basePath ? `${basePath}/${encodeURIComponent(submissionId)}` : '/login';
+  };
 
   const handleMarkAsRead = (id: string) => {
     storage.markNotificationAsRead(id);
@@ -164,7 +178,7 @@ export function NotificationCenter() {
                               <div className="flex items-center gap-2">
                                 {notification.submissionId && (
                                   <Link
-                                    to={`/admin/submissions/${notification.submissionId}`}
+                                    to={getSubmissionPath(notification.submissionId)}
                                     className="text-xs hover:underline"
                                     style={{ color: FESC_RED }}
                                     onClick={() => setIsOpen(false)}

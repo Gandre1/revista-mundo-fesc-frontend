@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, useParams } from 'react-router';
 import { Login } from './components/login';
 import { ForgotPassword } from './components/forgot-password';
 import { ResetPassword } from './components/reset-password';
@@ -96,6 +96,14 @@ function AdminNewSubmissionPage() {
   );
 }
 
+function PublicAuthorSubmissionPage() {
+  return (
+    <ProtectedRoute allowedRoles={['author']}>
+      <SubmissionWizardNew />
+    </ProtectedRoute>
+  );
+}
+
 function AdminMensajeriaPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
@@ -123,6 +131,20 @@ function AdminEmailTemplatesPage() {
 }
 
 function AdminAnalyticsPage() {
+  const { section } = useParams();
+  const sections = [
+    'articulos',
+    'numeros',
+    'revista',
+    'actividad-editorial',
+    'usuarios',
+    'informe-revision',
+    'vistas',
+  ];
+  if (section && !sections.includes(section) && !['contador-iis', 'informes'].includes(section)) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <AdminLayout>
@@ -414,7 +436,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/submission/new',
-    element: <SubmissionWizardNew />,
+    element: <PublicAuthorSubmissionPage />,
   },
   {
     path: '/submission/success',

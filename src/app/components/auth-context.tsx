@@ -32,7 +32,7 @@ const dashboardPaths: Record<UserRole, string> = {
 };
 
 export function getDashboardPath(role: UserRole): string {
-  return dashboardPaths[role];
+  return dashboardPaths[role] || '/login';
 }
 
 function isUserRole(role: string): role is UserRole {
@@ -43,7 +43,7 @@ function getStoredUser(): User | null {
   const token = localStorage.getItem('token');
   const storedUser = storage.getCurrentUser();
 
-  if (!token || !storedUser) {
+  if (!token || !storedUser || !isUserRole(storedUser.role)) {
     localStorage.removeItem('token');
     storage.setCurrentUser(null);
     setAuthToken(null);

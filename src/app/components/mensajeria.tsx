@@ -49,6 +49,10 @@ export function Mensajeria() {
       filtered = allMessages.filter(
         m => m.remitenteId === user.id || m.destinatarioId === user.id
       );
+    } else if (user.role === 'editor') {
+      filtered = allMessages.filter(
+        m => m.remitenteId === user.id || m.destinatarioId === user.id
+      );
     }
 
     setMessages(filtered);
@@ -142,6 +146,18 @@ export function Mensajeria() {
   };
 
   const unreadCount = getReceivedMessages().filter(m => !m.leido && m.destinatarioId === user?.id).length;
+  const getSubmissionPath = (submissionId: string) => {
+    const basePath = user?.role === 'admin'
+      ? '/admin/submissions'
+      : user?.role === 'editor'
+        ? '/editor/submissions'
+        : user?.role === 'reviewer'
+          ? '/revisor/asignados'
+          : user?.role === 'author'
+            ? '/autor/envios'
+            : null;
+    return basePath ? `${basePath}/${encodeURIComponent(submissionId)}` : '/login';
+  };
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -385,7 +401,7 @@ export function Mensajeria() {
                             
                             {message.submissionId && (
                               <Link
-                                to={`/admin/submissions/${message.submissionId}`}
+                                to={getSubmissionPath(message.submissionId)}
                                 onClick={(e) => e.stopPropagation()}
                                 className="flex items-center gap-1 hover:underline"
                                 style={{ color: FESC_RED }}
@@ -466,7 +482,7 @@ export function Mensajeria() {
                       </span>
                     </div>
                     <Link
-                      to={`/admin/submissions/${selectedMessage.submissionId}`}
+                      to={getSubmissionPath(selectedMessage.submissionId)}
                       className="text-sm hover:underline"
                       style={{ color: FESC_RED }}
                     >

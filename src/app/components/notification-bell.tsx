@@ -13,6 +13,10 @@ import {
 const FESC_RED = '#e30513';
 const FESC_GRAY = '#3c3c3b';
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -30,8 +34,8 @@ export function NotificationBell() {
     setError(null);
     try {
       setNotifications(await getNotifications());
-    } catch {
-      setError('No se pudieron cargar las notificaciones');
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'No se pudieron cargar las notificaciones.'));
     } finally {
       setIsLoading(false);
     }
@@ -42,7 +46,9 @@ export function NotificationBell() {
     const interval = window.setInterval(() => {
       getNotifications()
         .then(setNotifications)
-        .catch(() => undefined);
+        .catch((cause: unknown) => {
+          setError(getErrorMessage(cause, 'No se pudieron actualizar las notificaciones.'));
+        });
     }, 15000);
     return () => window.clearInterval(interval);
   }, []);
@@ -81,8 +87,8 @@ export function NotificationBell() {
           String(item.id) === id ? { ...item, is_read: true } : item
         )
       );
-    } catch {
-      setError('No se pudo marcar la notificación como leída');
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'No se pudo marcar la notificación como leída.'));
     } finally {
       setMarkingId(null);
     }
@@ -119,8 +125,8 @@ export function NotificationBell() {
     try {
       await deleteNotification(id);
       setNotifications((current) => current.filter((item) => String(item.id) !== id));
-    } catch {
-      setError('No se pudo eliminar la notificación');
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'No se pudo eliminar la notificación.'));
     } finally {
       setDeletingId(null);
     }
@@ -132,8 +138,8 @@ export function NotificationBell() {
       await clearNotifications();
       setNotifications([]);
       setError(null);
-    } catch {
-      setError('No se pudieron limpiar las notificaciones');
+    } catch (cause) {
+      setError(getErrorMessage(cause, 'No se pudieron limpiar las notificaciones.'));
     } finally {
       setIsClearing(false);
     }
