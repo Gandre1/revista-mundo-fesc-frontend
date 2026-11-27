@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { Mail, Send, Inbox, Trash2, Search, Filter, FileText, User, Calendar, Paperclip, Eye, MailOpen } from 'lucide-react';
-import { storage, Message } from '../lib/storage';
+import { toast } from 'sonner';
+import {
+  deleteMessage,
+  getMessageRecipients,
+  getMessages,
+  markMessageAsRead,
+  Message,
+  MessageRecipient,
+  sendMessage,
+} from '../../services/messageService';
 import { useAuth } from './auth-context';
 
 const FESC_RED = '#e30513';
@@ -11,6 +20,7 @@ const FESC_GRAY = '#3c3c3b';
 export function Mensajeria() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [recipients, setRecipients] = useState<MessageRecipient[]>([]);
   const [view, setView] = useState<'recibidos' | 'enviados' | 'nuevo'>('recibidos');
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,42 +35,39 @@ export function Mensajeria() {
   });
 
   useEffect(() => {
-    loadMessages();
-    const interval = setInterval(loadMessages, 2000);
+    void loadMessages();
+    void loadRecipients();
+    const interval = setInterval(() => void loadMessages(), 2000);
     return () => clearInterval(interval);
   }, [user]);
 
-  const loadMessages = () => {
+  const loadMessages = async () => {
     if (!user) return;
-    
-    const allMessages = storage.getMessages();
-    let filtered: Message[] = [];
-
-    if (user.role === 'admin') {
-      // Admin ve TODOS los mensajes
-      filtered = allMessages;
-    } else if (user.role === 'author') {
-      // Autor ve solo sus mensajes (enviados y recibidos)
-      filtered = allMessages.filter(
-        m => m.remitenteId === user.id || m.destinatarioId === user.id
-      );
-    } else if (user.role === 'reviewer') {
-      // Revisor ve solo mensajes relacionados con sus asignaciones
-      filtered = allMessages.filter(
-        m => m.remitenteId === user.id || m.destinatarioId === user.id
-      );
-    } else if (user.role === 'editor') {
-      filtered = allMessages.filter(
-        m => m.remitenteId === user.id || m.destinatarioId === user.id
-      );
+    try {
+      setMessages(await getMessages());
+      toast.dismiss('messages-load-error');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No fue posible cargar los mensajes.', {
+        id: 'messages-load-error',
+      });
     }
+  };
 
-    setMessages(filtered);
+  const loadRecipients = async () => {
+    if (!user) return;
+    try {
+      setRecipients(await getMessageRecipients());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No fue posible cargar los destinatarios.');
+    }
   };
 
   const getReceivedMessages = () => {
     return messages.filter(m => 
-      user?.role === 'admin' ? true : m.destinatarioId === user?.id
+      user?.role === 'admin'
+        ? true
+        : m.destinatarioId === user?.id ||
+          (!!m.submissionId && m.remitenteId !== user?.id && m.destinatarioId !== user?.id)
     );
   };
 
@@ -83,43 +90,25 @@ export function Mensajeria() {
     );
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
-    const users = storage.getUsers();
-    const destinatario = users.find(u => u.id === newMessage.destinatarioId);
-    
-    if (!destinatario) {
-      alert('Seleccione un destinatario válido');
-      return;
+    try {
+      await sendMessage({
+        recipientId: newMessage.destinatarioId,
+        subject: newMessage.asunto,
+        body: newMessage.contenido,
+        ...(newMessage.submissionId ? { submissionId: newMessage.submissionId } : {}),
+      });
+      setNewMessage({ destinatarioId: '', asunto: '', contenido: '', submissionId: '' });
+      setShowCompose(false);
+      setView('enviados');
+      toast.success('Mensaje enviado correctamente.');
+      await loadMessages();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No fue posible enviar el mensaje.');
     }
-
-    const message: Message = {
-      id: `msg-${Date.now()}`,
-      asunto: newMessage.asunto,
-      contenido: newMessage.contenido,
-      remitenteId: user.id,
-      remitenteNombre: `${user.nombre} ${user.apellidos || ''}`.trim(),
-      destinatarioId: destinatario.id,
-      destinatarioNombre: `${destinatario.nombre} ${destinatario.apellidos || ''}`.trim(),
-      fecha: new Date().toISOString(),
-      leido: false,
-      submissionId: newMessage.submissionId || undefined
-    };
-
-    storage.addMessage(message);
-    
-    setNewMessage({
-      destinatarioId: '',
-      asunto: '',
-      contenido: '',
-      submissionId: ''
-    });
-    
-    setShowCompose(false);
-    setView('enviados');
-    loadMessages();
   };
 
   const handleMessageClick = (message: Message) => {
@@ -127,22 +116,29 @@ export function Mensajeria() {
     
     // Marcar como leído si es el destinatario
     if (message.destinatarioId === user?.id && !message.leido) {
-      storage.markMessageAsRead(message.id);
-      loadMessages();
+      void markMessageAsRead(message.id)
+        .then(loadMessages)
+        .catch((error: unknown) => toast.error(
+          error instanceof Error ? error.message : 'No fue posible marcar el mensaje como leído.'
+        ));
     }
   };
 
-  const handleDeleteMessage = (id: string) => {
+  const handleDeleteMessage = async (id: string | number) => {
     if (confirm('¿Está seguro de eliminar este mensaje?')) {
-      storage.deleteMessage(id);
-      setSelectedMessage(null);
-      loadMessages();
+      try {
+        await deleteMessage(id);
+        setSelectedMessage(null);
+        await loadMessages();
+        toast.success('Mensaje eliminado.');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'No fue posible eliminar el mensaje.');
+      }
     }
   };
 
   const getUsers = () => {
-    const users = storage.getUsers();
-    return users.filter(u => u.id !== user?.id);
+    return recipients;
   };
 
   const unreadCount = getReceivedMessages().filter(m => !m.leido && m.destinatarioId === user?.id).length;
@@ -167,7 +163,7 @@ export function Mensajeria() {
           Mensajería
         </h1>
         <p className="text-gray-600">
-          {user?.role === 'admin' && 'Vista completa de todos los mensajes del sistema'}
+          {user?.role === 'admin' && 'Mensajes accesibles para el equipo editorial'}
           {user?.role === 'author' && 'Gestiona tu comunicación con editores y revisores'}
           {user?.role === 'reviewer' && 'Comunicación relacionada con tus revisiones'}
         </p>
@@ -254,7 +250,7 @@ export function Mensajeria() {
                     <option value="">Seleccionar destinatario...</option>
                     {getUsers().map(u => (
                       <option key={u.id} value={u.id}>
-                        {u.nombre} {u.apellidos} ({u.role === 'admin' ? 'Administrador' : u.role === 'author' ? 'Autor' : 'Revisor'})
+                        {u.nombre} {u.apellidos} ({u.role === 'admin' ? 'Administrador' : u.role === 'editor' ? 'Editor' : u.role === 'reviewer' ? 'Revisor' : 'Autor'})
                       </option>
                     ))}
                   </select>
@@ -433,13 +429,15 @@ export function Mensajeria() {
                     ← Volver
                   </button>
                   
-                  <button
-                    onClick={() => handleDeleteMessage(selectedMessage.id)}
-                    className="p-2 hover:bg-gray-100 rounded transition-colors"
-                    title="Eliminar mensaje"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-600" />
-                  </button>
+                  {(selectedMessage.remitenteId === user?.id || selectedMessage.destinatarioId === user?.id) && (
+                    <button
+                      onClick={() => handleDeleteMessage(selectedMessage.id)}
+                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      title="Eliminar mensaje"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </button>
+                  )}
                 </div>
 
                 <h2 className="text-2xl font-bold mb-4" style={{ color: FESC_GRAY }}>

@@ -71,30 +71,12 @@ export interface Notification {
   submissionId?: string;
 }
 
-export interface Message {
-  id: string;
-  asunto: string;
-  contenido: string;
-  remitenteId: string;
-  remitenteNombre: string;
-  destinatarioId: string;
-  destinatarioNombre: string;
-  fecha: string;
-  leido: boolean;
-  submissionId?: string;
-  archivoAdjunto?: {
-    nombre: string;
-    tamano: number;
-  };
-}
-
 class StorageService {
   private USERS_KEY = "fesc_users";
   private SUBMISSIONS_KEY = "fesc_submissions";
   private NOTIFICATIONS_KEY = "fesc_notifications";
   private CURRENT_USER_KEY = "fesc_current_user";
   private DRAFTS_KEY = "fesc_drafts";
-  private MESSAGES_KEY = "fesc_messages";
 
   // Inicializar datos por defecto
   init() {
@@ -233,53 +215,6 @@ class StorageService {
       this.saveSubmissions(defaultSubmissions);
     }
 
-    // Inicializar mensajes de ejemplo
-    if (!localStorage.getItem(this.MESSAGES_KEY)) {
-      const defaultMessages: Message[] = [
-        {
-          id: "msg-001",
-          asunto:
-            "Consulta sobre revisión del artículo SUB-2024-001",
-          contenido:
-            'Estimado editor,\n\nMe gustaría saber el estado actual de mi artículo "Impacto de la inteligencia artificial en la educación superior colombiana". ¿Ha sido asignado ya a revisores?\n\nQuedo atento a sus comentarios.\n\nSaludos cordiales,\nMaría García',
-          remitenteId: "2",
-          remitenteNombre: "María García Rodríguez",
-          destinatarioId: "1",
-          destinatarioNombre: "Administrador FESC",
-          fecha: "2024-04-10T10:30:00",
-          leido: false,
-          submissionId: "SUB-2024-001",
-        },
-        {
-          id: "msg-002",
-          asunto:
-            "Re: Consulta sobre revisión del artículo SUB-2024-001",
-          contenido:
-            "Estimada María,\n\nGracias por su mensaje. Su artículo ha sido asignado al Dr. Pedro Sánchez para revisión. El proceso de evaluación tomará aproximadamente 2-3 semanas.\n\nLe mantendremos informada sobre cualquier avance.\n\nCordialmente,\nEquipo Editorial",
-          remitenteId: "1",
-          remitenteNombre: "Administrador FESC",
-          destinatarioId: "2",
-          destinatarioNombre: "María García Rodríguez",
-          fecha: "2024-04-10T14:20:00",
-          leido: true,
-          submissionId: "SUB-2024-001",
-        },
-        {
-          id: "msg-003",
-          asunto: "Asignación de revisión - SUB-2024-002",
-          contenido:
-            'Estimado revisor,\n\nHemos asignado a usted la revisión del artículo "Sostenibilidad empresarial en el sector cafetero del Norte de Santander".\n\nPor favor, acceda al sistema para revisar el documento y enviar sus comentarios en las próximas dos semanas.\n\nGracias por su colaboración.\n\nSaludos,\nEquipo Editorial',
-          remitenteId: "1",
-          remitenteNombre: "Administrador FESC",
-          destinatarioId: "3",
-          destinatarioNombre: "Carlos Martínez López",
-          fecha: "2024-04-12T09:00:00",
-          leido: false,
-          submissionId: "SUB-2024-002",
-        },
-      ];
-      this.saveMessages(defaultMessages);
-    }
   }
 
   // USERS
@@ -571,50 +506,6 @@ class StorageService {
     return events.slice(0, 5);
   }
 
-  // MESSAGES
-  getMessages(): Message[] {
-    const data = localStorage.getItem(this.MESSAGES_KEY);
-    return data ? JSON.parse(data) : [];
-  }
-
-  saveMessages(messages: Message[]) {
-    localStorage.setItem(
-      this.MESSAGES_KEY,
-      JSON.stringify(messages),
-    );
-  }
-
-  addMessage(message: Message) {
-    const messages = this.getMessages();
-    messages.unshift(message); // Agregar al inicio
-    this.saveMessages(messages);
-  }
-
-  markMessageAsRead(id: string) {
-    const messages = this.getMessages();
-    const message = messages.find((m) => m.id === id);
-    if (message) {
-      message.leido = true;
-      this.saveMessages(messages);
-    }
-  }
-
-  markAllMessagesAsRead() {
-    const messages = this.getMessages();
-    messages.forEach((m) => (m.leido = true));
-    this.saveMessages(messages);
-  }
-
-  deleteMessage(id: string) {
-    const messages = this.getMessages();
-    const filtered = messages.filter((m) => m.id !== id);
-    this.saveMessages(filtered);
-  }
-
-  getUnreadMessagesCount(): number {
-    const messages = this.getMessages();
-    return messages.filter((m) => !m.leido).length;
-  }
 }
 
 export const storage = new StorageService();
